@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M51SNG0N6DDK13D395RD7R4G",
+  "session_id": "trustintern-capture-setup",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-16T07:26:18.1401482Z",
+  "branch": "cursor/entire-devrelay-env-cb85",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/CONTRACT.md"
+  ],
+  "agent": "Cursor",
+  "model": "cursor",
+  "turn_id": "cd777988a687",
+  "checkpoint_transcript_start": 2,
+  "transcript_lines_at_start": 2,
+  "compact_transcript_start": 2,
+  "initial_attribution": {
+    "calculated_at": "2026-10-16T07:26:18.1326515Z",
+    "agent_lines": 90,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 90,
+    "total_lines_changed": 91,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
