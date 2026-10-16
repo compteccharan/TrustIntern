@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M51MBSRBDSVMPZDZCN8FMAER",
+  "session_id": "trustintern-capture-setup",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-16T06:08:50.5773729Z",
+  "branch": "cursor/entire-devrelay-env-cb85",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Cursor",
+  "model": "cursor",
+  "turn_id": "cd777988a687",
+  "compact_transcript_start": 0,
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1222,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/AGENTS.md": 141,
+        ".cursor/mcp.json": 8,
+        ".cursor/skills/devrelay-challenges/SKILL.md": 166,
+        ".cursor/skills/devrelay-community-wisdom/SKILL.md": 98,
+        ".cursor/skills/devrelay-knowledge/SKILL.md": 125,
+        ".cursor/skills/devrelay-mlh-submissions/SKILL.md": 206,
+        ".cursor/skills/devrelay-navigator/SKILL.md": 97,
+        ".cursor/skills/devrelay-offers/SKILL.md": 77,
+        ".cursor/skills/devrelay-publishing/SKILL.md": 134,
+        ".cursor/skills/devrelay-sessions/SKILL.md": 131,
+        ".cursor/skills/devrelay-sponsor-skills/SKILL.md": 39
+      }
+    }
+  ]
+}
