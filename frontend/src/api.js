@@ -1,3 +1,6 @@
+// Production leaves this empty so the browser calls /api on the public host.
+// Vercel rewrites that path to the backend service. A service binding cannot
+// be read by this static app; bindings exist only inside functions at runtime.
 const configuredBase = import.meta.env.VITE_API_BASE;
 const BASE_URL = (
   configuredBase !== undefined && configuredBase !== null && configuredBase !== ''
