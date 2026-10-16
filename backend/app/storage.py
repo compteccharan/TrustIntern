@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# Vercel functions can write only under /tmp, and that disk is ephemeral.
+if os.environ.get("VERCEL"):
+    DATA_DIR = Path("/tmp/trustintern-data")
+else:
+    DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DB_PATH = DATA_DIR / "trustintern.db"
 
 

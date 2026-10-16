@@ -81,7 +81,7 @@ Each SSE message is `data: {AgentEvent JSON}\n\n`. Stream ends after `run_done`.
 | `type` | Meaning |
 | --- | --- |
 | `run_started` | Orchestrator began |
-| `planner_mode` | `payload.mode` is `gemma` or `heuristic`. When `gemma`, `payload.model` is the open-weight id (default `gemma-4-26b-a4b-it`) and `payload.provider` is `gemini-api` |
+| `planner_mode` | `payload.mode` is `gemma` or `heuristic`. When `gemma`, `payload.model` is the open-weight id (default `gemma4:e2b`) and `payload.provider` is `ollama` |
 | `agent_started` | Allowlisted agent began |
 | `agent_finding` | One evidence row from an agent |
 | `agent_spawn` | Planner/heuristic enqueued a child agent |
@@ -178,11 +178,11 @@ All have `"fictional": true`. Demo uses `live_lookups=false`.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | for Gemma path | Google AI Studio / Gemini API key |
-| `GEMMA_MODEL` | no | Default `gemma-4-26b-a4b-it` |
-| `FORCE_HEURISTIC_PLANNER` | no | `1`/`true` forces heuristic spawn (demo without key) |
+| `OLLAMA_HOST` | no | Local Ollama server. Default `http://127.0.0.1:11434` |
+| `GEMMA_MODEL` | no | Default `gemma4:e2b` |
+| `FORCE_HEURISTIC_PLANNER` | no | `1`/`true` forces heuristic spawn (demo without the local model) |
 
-Without a key, the planner emits `planner_mode: heuristic` and still runs fixed checkers + OSINT workers.
+Without a running local model, the planner emits `planner_mode: heuristic` and still runs fixed checkers + OSINT workers.
 
 ## Run
 

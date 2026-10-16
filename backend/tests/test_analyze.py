@@ -57,9 +57,9 @@ def test_health():
     body = client.get("/api/health").json()
     assert body["status"] == "ok"
     assert body["weights"] == "open-weight"
-    assert body["provider"] == "gemini-api"
+    assert body["provider"] == "ollama"
     assert body["model"]
-    assert body["gemma_configured"] is False
+    assert isinstance(body["gemma_configured"], bool)
 
 
 def test_suspicious_score_90():

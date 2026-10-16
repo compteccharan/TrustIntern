@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+requests
+beautifulsoup4
+pypdf
+httpx
+python-multipart
+google-genai
+pypdfium2

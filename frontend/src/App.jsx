@@ -8,6 +8,7 @@ import {
   fetchInvestigationById,
   ApiError,
 } from './api';
+import { downloadReportPdf } from './reportPdf';
 
 const STATIC_DISCLAIMER = 'Heuristic indicator score, not a probability of fraud.';
 
@@ -260,121 +261,9 @@ export default function App() {
     }
   }
 
-  // Download report as .txt in browser
   function handleDownloadReport() {
     if (!report) return;
-
-    const lines = [];
-    lines.push('============================================================');
-    lines.push('TRUSTINTERN INVESTIGATION REPORT');
-    lines.push('============================================================');
-    lines.push(`Report ID: ${report.id}`);
-    lines.push(`Generated: ${report.created_at}`);
-    lines.push(`Company: ${report.input_summary?.company_name || companyName}`);
-    if (report.input_summary?.recruiter_name) {
-      lines.push(`Recruiter: ${report.input_summary.recruiter_name}`);
-    }
-    if (report.input_summary?.recruiter_email) {
-      lines.push(`Recruiter Email: ${report.input_summary.recruiter_email}`);
-    }
-    if (report.input_summary?.website_url) {
-      lines.push(`Website: ${report.input_summary.website_url}`);
-    }
-    lines.push(`Live Lookups: ${report.input_summary?.live_lookups ? 'Enabled' : 'Disabled'}`);
-    lines.push('');
-    lines.push('------------------------------------------------------------');
-    lines.push(`SCORE: ${report.score} / 100`);
-    lines.push(`RISK LEVEL: ${report.risk_level}`);
-    lines.push(`DISCLAIMER: ${report.disclaimer}`);
-    lines.push('------------------------------------------------------------');
-    lines.push('');
-
-    lines.push('EQUATION:');
-    if (report.equation && report.equation.length > 0) {
-      report.equation.forEach((eq) => {
-        lines.push(`  + ${eq.label} (+${eq.points})`);
-      });
-      lines.push(`  = ${report.score} / 100`);
-    } else {
-      lines.push('  No indicators triggered (+0 points)');
-      lines.push(`  = ${report.score} / 100`);
-    }
-    lines.push('');
-
-    lines.push('------------------------------------------------------------');
-    lines.push('EVIDENCE:');
-    lines.push('');
-
-    const indicatorItems = (report.evidence || []).filter((e) => e.status === 'indicator');
-    const clearItems = (report.evidence || []).filter((e) => e.status === 'clear');
-    const unknownItems = (report.evidence || []).filter((e) => e.status === 'unknown');
-
-    if (indicatorItems.length > 0) {
-      lines.push('[Raised the score]');
-      indicatorItems.forEach((item) => {
-        lines.push(`* ${item.title} (+${item.points} pts) [${item.status}]`);
-        lines.push(`  Reason: ${item.reason}`);
-        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
-        lines.push(`  Source: ${item.source}`);
-        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
-        if (item.also_found_in && item.also_found_in.length > 0) {
-          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
-        }
-        lines.push('');
-      });
-    }
-
-    if (clearItems.length > 0) {
-      lines.push('[Checked and did not raise the score]');
-      clearItems.forEach((item) => {
-        lines.push(`* ${item.title} [${item.status}]`);
-        lines.push(`  Reason: ${item.reason}`);
-        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
-        lines.push(`  Source: ${item.source}`);
-        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
-        if (item.also_found_in && item.also_found_in.length > 0) {
-          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
-        }
-        lines.push('');
-      });
-    }
-
-    if (unknownItems.length > 0) {
-      lines.push('[Not checked]');
-      unknownItems.forEach((item) => {
-        lines.push(`* ${item.title} [${item.status}]`);
-        lines.push(`  Reason: ${item.reason}`);
-        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
-        lines.push(`  Source: ${item.source}`);
-        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
-        if (item.also_found_in && item.also_found_in.length > 0) {
-          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
-        }
-        lines.push('');
-      });
-    }
-
-    if (report.recommendations && report.recommendations.length > 0) {
-      lines.push('------------------------------------------------------------');
-      lines.push('RECOMMENDATIONS:');
-      report.recommendations.forEach((rec, idx) => {
-        lines.push(`${idx + 1}. ${rec}`);
-      });
-      lines.push('');
-    }
-
-    lines.push('============================================================');
-    lines.push(`End of Report #${report.id}`);
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `trustintern-report-${report.id}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadReportPdf(report, companyName);
   }
 
   // Format timestamp for history list
@@ -405,8 +294,8 @@ export default function App() {
           {gemmaStatus && (
             <div className="disclaimer-banner">
               {gemmaStatus.gemma_configured
-                ? `Open-weight ${gemmaStatus.model} via Gemini API is configured. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
-                : `Gemma is not configured. Set GEMINI_API_KEY so open-weight ${gemmaStatus.model || 'gemma-4-26b-a4b-it'} can read images. Until then, vision runs stay on phrase rules.`}
+                ? `Open-weight ${gemmaStatus.model} is running locally in Ollama. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
+                : `Local Gemma is not reachable. Start Ollama and run: ollama pull ${gemmaStatus.model || 'gemma4:e2b'}. Until then, vision stays on phrase rules.`}
             </div>
           )}
         </div>
@@ -692,7 +581,7 @@ export default function App() {
                 {report.planner_mode && (
                   <div className="equation-row">
                     {report.planner_mode === 'gemma'
-                      ? `Vision planner: open-weight ${report.model || 'Gemma 4'} (Gemini API)`
+                      ? `Vision planner: open-weight ${report.model || 'Gemma 4'} (local Ollama)`
                       : 'Vision planner: heuristic fallback (no live Gemma call)'}
                   </div>
                 )}
@@ -764,7 +653,7 @@ export default function App() {
                   className="btn-download"
                   onClick={handleDownloadReport}
                 >
-                  Download report
+                  Download PDF
                 </button>
               </div>
             </>

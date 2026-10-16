@@ -1,52 +1,91 @@
-"""google-genai wrapper for Gemma 4 (planner + multimodal claims). Never scores."""
+"""Local Ollama client for Gemma 4 (planner + multimodal claims). Never scores."""
 
 from __future__ import annotations
 
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from typing import Any
 
 
-DEFAULT_MODEL = "gemma-4-26b-a4b-it"
+DEFAULT_MODEL = "gemma4:e2b"
+DEFAULT_HOST = "http://127.0.0.1:11434"
+
+
+def ollama_base_url(host: str | None = None) -> str:
+    raw = (host or os.environ.get("OLLAMA_HOST") or DEFAULT_HOST).strip().rstrip("/")
+    if not raw.startswith("http://") and not raw.startswith("https://"):
+        raw = "http://" + raw
+    return raw
+
+
+def ollama_reachable(host: str | None = None, timeout: float = 1.5) -> bool:
+    url = ollama_base_url(host) + "/api/tags"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return 200 <= getattr(resp, "status", 200) < 300
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class GemmaClient:
     def __init__(
         self,
-        api_key: str | None = None,
+        host: str | None = None,
         model: str | None = None,
+        api_key: str | None = None,
     ) -> None:
-        self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "")
+        # api_key is unused. Local Ollama does not need one.
+        del api_key
+        self.host = ollama_base_url(host)
         self.model = model or os.environ.get("GEMMA_MODEL", DEFAULT_MODEL)
-        self._client = None
 
     @property
     def available(self) -> bool:
-        return bool(self.api_key and self.api_key.strip())
+        return ollama_reachable(self.host)
 
-    def _ensure_client(self) -> Any:
-        if self._client is None:
-            from google import genai
-
-            self._client = genai.Client(api_key=self.api_key)
-        return self._client
-
-    def _generate(self, contents: Any, *, timeout_s: float = 20.0) -> str:
-        client = self._ensure_client()
-        # google-genai generate_content is sync; callers wrap with asyncio.to_thread
-        response = client.models.generate_content(
-            model=self.model,
-            contents=contents,
+    def _generate(
+        self,
+        prompt: str,
+        *,
+        images: list[str] | None = None,
+        timeout_s: float = 180.0,
+    ) -> str:
+        message: dict[str, Any] = {"role": "user", "content": prompt}
+        if images:
+            message["images"] = images
+        payload = {
+            "model": self.model,
+            "messages": [message],
+            "stream": False,
+            "think": False,
+            "options": {
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "top_k": 64,
+                "num_ctx": 4096,
+                "num_predict": 700,
+            },
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            self.host + "/api/chat",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        text = getattr(response, "text", None) or ""
-        if not text and getattr(response, "candidates", None):
-            try:
-                parts = response.candidates[0].content.parts
-                text = "".join(getattr(p, "text", "") or "" for p in parts)
-            except Exception:  # noqa: BLE001
-                text = ""
-        return text.strip()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"ollama_http_{exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"ollama_unreachable: {exc.reason}") from exc
+        message_out = body.get("message") or {}
+        return str(message_out.get("content") or "").strip()
 
     async def plan_spawns(
         self,
@@ -88,8 +127,8 @@ class GemmaClient:
     ) -> list[dict[str, str]]:
         """Multimodal: list scam-relevant claims with exact quotes; do not score."""
         import asyncio
-        from google.genai import types
 
+        del mime_type  # Ollama takes raw base64; the local model infers the image type.
         prompt = (
             "List scam-relevant claims from this offer letter page with exact quotes. "
             "Do not score or rate risk. Return ONLY a JSON array of objects with keys: "
@@ -97,19 +136,12 @@ class GemmaClient:
         )
         if text_hint:
             prompt += f"\nExtracted text hint:\n{text_hint[:1200]}"
+        image = (image_b64 or "").strip()
+        if image.startswith("data:") and "," in image:
+            image = image.split(",", 1)[1]
 
         def _call() -> str:
-            image_bytes = __import__("base64").b64decode(image_b64)
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/png"),
-                        types.Part.from_text(text=prompt),
-                    ],
-                )
-            ]
-            return self._generate(contents)
+            return self._generate(prompt, images=[image] if image else None)
 
         text = await asyncio.to_thread(_call)
         raw = _parse_json_array(text)
@@ -172,11 +204,9 @@ def _parse_json_array(text: str) -> list[dict[str, Any]]:
     text = (text or "").strip()
     if not text:
         raise ValueError("empty_model_response")
-    # Strip markdown fences
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if fence:
         text = fence.group(1).strip()
-    # Find first array
     start = text.find("[")
     end = text.rfind("]")
     if start < 0 or end < 0 or end <= start:

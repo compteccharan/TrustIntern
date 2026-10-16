@@ -174,7 +174,7 @@ async def run(ctx: dict[str, Any], spec: AgentSpec) -> list[dict[str, Any]]:
         ):
             reason = (
                 "Image received, but Gemma vision did not run. "
-                "Set GEMINI_API_KEY so open-weight Gemma 4 can read it."
+                "Start Ollama and pull gemma4:e2b so local Gemma 4 can read it."
             )
         elif raster_error:
             reason = f"Page raster failed ({raster_error}); no quotes available."

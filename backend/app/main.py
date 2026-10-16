@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -15,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.agents.bus import RUN_COMPLETE, bus
 from app.agents.orchestrator import get_run, start_run
 from app.analyze import Lookups, analyze_opportunity
-from app.agents.gemma_client import DEFAULT_MODEL
+from app.agents.gemma_client import DEFAULT_MODEL, ollama_reachable
 from app.document import MAX_PDF_BYTES
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -30,6 +32,25 @@ from app.samples import get_samples
 from app.storage import get_report, init_db, list_reports, save_report
 
 
+def _load_local_env() -> None:
+    """Read backend/.env without overriding variables already set in the process."""
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_local_env()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -40,7 +61,10 @@ app = FastAPI(title="TrustIntern API", version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "https://trustintern.charancodes.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -171,15 +195,12 @@ async def _parse_investigation_form(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    import os
-
-    configured = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
     return {
         "status": "ok",
         "model": os.environ.get("GEMMA_MODEL", DEFAULT_MODEL),
         "weights": "open-weight",
-        "provider": "gemini-api",
-        "gemma_configured": configured,
+        "provider": "ollama",
+        "gemma_configured": ollama_reachable(),
     }
 
 
