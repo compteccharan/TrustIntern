@@ -1,0 +1,2 @@
+{"role":"user","message":{"content":"Enable Entire hooks and DevRelay so this repo captures sessions and checkpoints."}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"Enabled Cursor session hooks and registered the DevRelay gateway for this repository."}]}}
