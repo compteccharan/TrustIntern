@@ -1,0 +1,730 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  fetchSamples,
+  submitInvestigation,
+  fetchInvestigations,
+  fetchInvestigationById,
+  ApiError,
+} from './api';
+
+const STATIC_DISCLAIMER = 'Heuristic indicator score, not a probability of fraud.';
+
+export default function App() {
+  // Form state
+  const [companyName, setCompanyName] = useState('');
+  const [recruiterName, setRecruiterName] = useState('');
+  const [recruiterEmail, setRecruiterEmail] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [message, setMessage] = useState('');
+  const [liveLookups, setLiveLookups] = useState(true);
+  const [pdfFile, setPdfFile] = useState(null);
+
+  // Validation errors from 422: { field_name: errorMessage }
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // General error banner (e.g. Network error)
+  const [globalError, setGlobalError] = useState(null);
+
+  // In-flight state
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Current active report
+  const [report, setReport] = useState(null);
+
+  // Fictional sample banner
+  const [isSampleLoaded, setIsSampleLoaded] = useState(false);
+
+  // Samples cache from GET /api/samples
+  const [samplesCache, setSamplesCache] = useState(null);
+
+  // History list from GET /api/investigations
+  const [historyList, setHistoryList] = useState([]);
+
+  const fileInputRef = useRef(null);
+
+  // Load history on mount
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  async function loadHistory() {
+    try {
+      const items = await fetchInvestigations();
+      if (Array.isArray(items)) {
+        setHistoryList(items);
+      }
+    } catch (err) {
+      if (err.isNetworkError) {
+        setGlobalError('API is not running. Start the backend on port 8000.');
+      }
+    }
+  }
+
+  // Score band class helper
+  function getScoreBandClass(score) {
+    if (score >= 61) return 'band-high';
+    if (score >= 31) return 'band-mid';
+    return 'band-low';
+  }
+
+  // Handle clicking sample buttons
+  async function handleSampleClick(sampleKey) {
+    setGlobalError(null);
+    setFieldErrors({});
+    setIsLoading(true);
+
+    try {
+      let samples = samplesCache;
+      if (!samples) {
+        samples = await fetchSamples();
+        setSamplesCache(samples);
+      }
+
+      const sample = samples.find((s) => s.id === sampleKey);
+      if (!sample) {
+        throw new Error(`Sample ${sampleKey} not found`);
+      }
+
+      // Populate form fields
+      setCompanyName(sample.company_name || '');
+      setRecruiterName(sample.recruiter_name || '');
+      setRecruiterEmail(sample.recruiter_email || '');
+      setWebsiteUrl(sample.website_url || '');
+      setMessage(sample.message || '');
+      setLiveLookups(false); // lookups off for samples
+      setPdfFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      setIsSampleLoaded(true);
+
+      // POST to /api/investigations with live_lookups=false
+      const payload = {
+        company_name: sample.company_name,
+        recruiter_name: sample.recruiter_name || '',
+        recruiter_email: sample.recruiter_email || '',
+        website_url: sample.website_url || '',
+        message: sample.message,
+        live_lookups: false,
+      };
+
+      const result = await submitInvestigation(payload);
+      setReport(result);
+      loadHistory();
+    } catch (err) {
+      if (err.isNetworkError) {
+        setGlobalError('API is not running. Start the backend on port 8000.');
+      } else if (err instanceof ApiError && err.status === 422) {
+        setFieldErrors(err.fields || {});
+      } else {
+        setGlobalError(err.message || 'An error occurred while loading the sample.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // Handle manual form submit
+  async function handleInvestigate(e) {
+    if (e) e.preventDefault();
+    setGlobalError(null);
+    setFieldErrors({});
+    setIsLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('company_name', companyName);
+      formData.append('message', message);
+      if (recruiterName) formData.append('recruiter_name', recruiterName);
+      if (recruiterEmail) formData.append('recruiter_email', recruiterEmail);
+      if (websiteUrl) formData.append('website_url', websiteUrl);
+      formData.append('live_lookups', liveLookups ? 'true' : 'false');
+      if (pdfFile) {
+        formData.append('pdf', pdfFile);
+      }
+
+      const result = await submitInvestigation(formData);
+      setReport(result);
+      setIsSampleLoaded(false); // Manual run completed
+      loadHistory();
+    } catch (err) {
+      if (err.isNetworkError) {
+        setGlobalError('API is not running. Start the backend on port 8000.');
+      } else if (err instanceof ApiError && err.status === 422) {
+        setFieldErrors(err.fields || {});
+      } else {
+        setGlobalError(err.message || 'An unexpected error occurred.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // Handle history item click
+  async function handleReopenHistory(id) {
+    setGlobalError(null);
+    setIsLoading(true);
+    try {
+      const investigation = await fetchInvestigationById(id);
+      setReport(investigation);
+      setIsSampleLoaded(false);
+
+      if (investigation.input_summary) {
+        setCompanyName(investigation.input_summary.company_name || '');
+        setRecruiterName(investigation.input_summary.recruiter_name || '');
+        setRecruiterEmail(investigation.input_summary.recruiter_email || '');
+        setWebsiteUrl(investigation.input_summary.website_url || '');
+        if (!message) {
+          setMessage(investigation.input_summary.message_preview || '');
+        }
+        setLiveLookups(investigation.input_summary.live_lookups ?? true);
+      }
+    } catch (err) {
+      if (err.isNetworkError) {
+        setGlobalError('API is not running. Start the backend on port 8000.');
+      } else {
+        setGlobalError(err.message || 'Failed to reopen investigation.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // Download report as .txt in browser
+  function handleDownloadReport() {
+    if (!report) return;
+
+    const lines = [];
+    lines.push('============================================================');
+    lines.push('TRUSTINTERN INVESTIGATION REPORT');
+    lines.push('============================================================');
+    lines.push(`Report ID: ${report.id}`);
+    lines.push(`Generated: ${report.created_at}`);
+    lines.push(`Company: ${report.input_summary?.company_name || companyName}`);
+    if (report.input_summary?.recruiter_name) {
+      lines.push(`Recruiter: ${report.input_summary.recruiter_name}`);
+    }
+    if (report.input_summary?.recruiter_email) {
+      lines.push(`Recruiter Email: ${report.input_summary.recruiter_email}`);
+    }
+    if (report.input_summary?.website_url) {
+      lines.push(`Website: ${report.input_summary.website_url}`);
+    }
+    lines.push(`Live Lookups: ${report.input_summary?.live_lookups ? 'Enabled' : 'Disabled'}`);
+    lines.push('');
+    lines.push('------------------------------------------------------------');
+    lines.push(`SCORE: ${report.score} / 100`);
+    lines.push(`RISK LEVEL: ${report.risk_level}`);
+    lines.push(`DISCLAIMER: ${report.disclaimer}`);
+    lines.push('------------------------------------------------------------');
+    lines.push('');
+
+    lines.push('EQUATION:');
+    if (report.equation && report.equation.length > 0) {
+      report.equation.forEach((eq) => {
+        lines.push(`  + ${eq.label} (+${eq.points})`);
+      });
+      lines.push(`  = ${report.score} / 100`);
+    } else {
+      lines.push('  No indicators triggered (+0 points)');
+      lines.push(`  = ${report.score} / 100`);
+    }
+    lines.push('');
+
+    lines.push('------------------------------------------------------------');
+    lines.push('EVIDENCE:');
+    lines.push('');
+
+    const indicatorItems = (report.evidence || []).filter((e) => e.status === 'indicator');
+    const clearItems = (report.evidence || []).filter((e) => e.status === 'clear');
+    const unknownItems = (report.evidence || []).filter((e) => e.status === 'unknown');
+
+    if (indicatorItems.length > 0) {
+      lines.push('[Raised the score]');
+      indicatorItems.forEach((item) => {
+        lines.push(`* ${item.title} (+${item.points} pts) [${item.status}]`);
+        lines.push(`  Reason: ${item.reason}`);
+        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
+        lines.push(`  Source: ${item.source}`);
+        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
+        if (item.also_found_in && item.also_found_in.length > 0) {
+          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
+        }
+        lines.push('');
+      });
+    }
+
+    if (clearItems.length > 0) {
+      lines.push('[Checked and did not raise the score]');
+      clearItems.forEach((item) => {
+        lines.push(`* ${item.title} [${item.status}]`);
+        lines.push(`  Reason: ${item.reason}`);
+        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
+        lines.push(`  Source: ${item.source}`);
+        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
+        if (item.also_found_in && item.also_found_in.length > 0) {
+          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
+        }
+        lines.push('');
+      });
+    }
+
+    if (unknownItems.length > 0) {
+      lines.push('[Not checked]');
+      unknownItems.forEach((item) => {
+        lines.push(`* ${item.title} [${item.status}]`);
+        lines.push(`  Reason: ${item.reason}`);
+        if (item.excerpt) lines.push(`  Excerpt: "${item.excerpt}"`);
+        lines.push(`  Source: ${item.source}`);
+        if (item.source_url) lines.push(`  Source URL: ${item.source_url}`);
+        if (item.also_found_in && item.also_found_in.length > 0) {
+          lines.push(`  Also found in: ${item.also_found_in.join(', ')}`);
+        }
+        lines.push('');
+      });
+    }
+
+    if (report.recommendations && report.recommendations.length > 0) {
+      lines.push('------------------------------------------------------------');
+      lines.push('RECOMMENDATIONS:');
+      report.recommendations.forEach((rec, idx) => {
+        lines.push(`${idx + 1}. ${rec}`);
+      });
+      lines.push('');
+    }
+
+    lines.push('============================================================');
+    lines.push(`End of Report #${report.id}`);
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trustintern-report-${report.id}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // Format timestamp for history list
+  function formatTime(isoString) {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (_) {
+      return isoString;
+    }
+  }
+
+  const activeDisclaimer = report?.disclaimer || STATIC_DISCLAIMER;
+
+  // Split evidence into groups
+  const indicatorEvidence = (report?.evidence || []).filter((e) => e.status === 'indicator');
+  const clearEvidence = (report?.evidence || []).filter((e) => e.status === 'clear');
+  const unknownEvidence = (report?.evidence || []).filter((e) => e.status === 'unknown');
+
+  return (
+    <div className="desk-container">
+      {/* Top of the page, always visible */}
+      <header className="top-bar">
+        <div className="header-row">
+          <h1 className="app-title">TrustIntern</h1>
+          <div className="disclaimer-banner">{activeDisclaimer}</div>
+        </div>
+
+        <div className="samples-row">
+          <span className="sample-label">Fictional samples:</span>
+          <button
+            type="button"
+            className="btn-sample"
+            onClick={() => handleSampleClick('suspicious')}
+            disabled={isLoading}
+          >
+            Suspicious offer
+          </button>
+          <button
+            type="button"
+            className="btn-sample"
+            onClick={() => handleSampleClick('consistent')}
+            disabled={isLoading}
+          >
+            Consistent offer
+          </button>
+          <button
+            type="button"
+            className="btn-sample"
+            onClick={() => handleSampleClick('limited')}
+            disabled={isLoading}
+          >
+            Limited evidence
+          </button>
+        </div>
+
+        {isSampleLoaded && (
+          <div className="sample-active-note">
+            Fictional sample. Live website and domain-age lookups are off so the score stays stable.
+          </div>
+        )}
+      </header>
+
+      {/* Global Error Banner (API Down, Network, etc.) */}
+      {globalError && <div className="error-bar">{globalError}</div>}
+
+      <div className="main-grid">
+        {/* Left Column: Form (380px) */}
+        <section className="form-panel">
+          <form onSubmit={handleInvestigate}>
+            {/* Company */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="company">
+                  Company
+                </label>
+                {fieldErrors.company_name && (
+                  <span className="field-error">{fieldErrors.company_name}</span>
+                )}
+              </div>
+              <input
+                id="company"
+                type="text"
+                className={`form-input ${fieldErrors.company_name ? 'has-error' : ''}`}
+                value={companyName}
+                onChange={(e) => {
+                  setCompanyName(e.target.value);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Recruiter */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="recruiter">
+                  Recruiter
+                </label>
+                {fieldErrors.recruiter_name && (
+                  <span className="field-error">{fieldErrors.recruiter_name}</span>
+                )}
+              </div>
+              <input
+                id="recruiter"
+                type="text"
+                className={`form-input ${fieldErrors.recruiter_name ? 'has-error' : ''}`}
+                value={recruiterName}
+                onChange={(e) => {
+                  setRecruiterName(e.target.value);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Recruiter email */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="recruiter_email">
+                  Recruiter email
+                </label>
+                {fieldErrors.recruiter_email && (
+                  <span className="field-error">{fieldErrors.recruiter_email}</span>
+                )}
+              </div>
+              <input
+                id="recruiter_email"
+                type="text"
+                className={`form-input ${fieldErrors.recruiter_email ? 'has-error' : ''}`}
+                value={recruiterEmail}
+                onChange={(e) => {
+                  setRecruiterEmail(e.target.value);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Website */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="website">
+                  Website
+                </label>
+                {fieldErrors.website_url && (
+                  <span className="field-error">{fieldErrors.website_url}</span>
+                )}
+              </div>
+              <input
+                id="website"
+                type="text"
+                className={`form-input ${fieldErrors.website_url ? 'has-error' : ''}`}
+                value={websiteUrl}
+                onChange={(e) => {
+                  setWebsiteUrl(e.target.value);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Recruitment message */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="message">
+                  Recruitment message
+                </label>
+                {fieldErrors.message && (
+                  <span className="field-error">{fieldErrors.message}</span>
+                )}
+              </div>
+              <textarea
+                id="message"
+                className={`form-textarea ${fieldErrors.message ? 'has-error' : ''}`}
+                rows={5}
+                value={message}
+                onChange={(e) => {
+                  setMessage(e.target.value);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Offer letter PDF */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="pdf">
+                  Offer letter PDF
+                </label>
+                {fieldErrors.pdf && <span className="field-error">{fieldErrors.pdf}</span>}
+              </div>
+              <input
+                id="pdf"
+                type="file"
+                accept=".pdf,application/pdf"
+                ref={fileInputRef}
+                className="file-input"
+                onChange={(e) => {
+                  setPdfFile(e.target.files?.[0] || null);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* checkbox Run live website and domain-age lookups */}
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={liveLookups}
+                onChange={(e) => {
+                  setLiveLookups(e.target.checked);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+              <span>Run live website and domain-age lookups</span>
+            </label>
+
+            {/* Primary button Investigate */}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Checking the offer...' : 'Investigate'}
+            </button>
+          </form>
+
+          {/* History list */}
+          <div className="history-section">
+            <h3 className="history-heading">Investigation History</h3>
+            {historyList.length === 0 ? (
+              <div style={{ fontSize: '13px', color: 'var(--ink-muted)' }}>
+                No past investigations yet.
+              </div>
+            ) : (
+              <ul className="history-list">
+                {historyList.map((item) => (
+                  <li
+                    key={item.id}
+                    className="history-item"
+                    onClick={() => handleReopenHistory(item.id)}
+                    title={`Click to reopen report #${item.id}`}
+                  >
+                    <span className="history-company">
+                      {item.input_summary?.company_name || 'Investigation'}
+                    </span>
+                    <span className={`history-score ${getScoreBandClass(item.score)}`}>
+                      {item.score}/100
+                    </span>
+                    <span className="history-time">{formatTime(item.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* Right Column: Report fluid */}
+        <section className="report-panel">
+          {isLoading && (
+            <div className="in-flight-banner">Checking the offer...</div>
+          )}
+
+          {!isLoading && !report && (
+            <div className="report-empty">
+              Submit an offer or load a fictional sample.
+            </div>
+          )}
+
+          {report && (
+            <>
+              {/* Sticky Score Block */}
+              <div className="score-block">
+                <div className="score-main-row">
+                  <div className={`score-number ${getScoreBandClass(report.score)}`}>
+                    {report.score}/100
+                  </div>
+                  <div className={`risk-level-badge ${getScoreBandClass(report.score)}`}>
+                    {report.risk_level}
+                  </div>
+                </div>
+
+                {/* Equation: one chip per equation item, {label} +{points}, then = {score} */}
+                <div className="equation-row">
+                  {report.equation && report.equation.length > 0 && (
+                    report.equation.map((item, idx) => (
+                      <span key={idx} className="equation-chip">
+                        {item.label} +{item.points}
+                      </span>
+                    ))
+                  )}
+                  <span className="equation-equals">= {report.score}</span>
+                </div>
+              </div>
+
+              {/* Group Evidence by Status */}
+              <div className="evidence-section">
+                {/* indicator heading Raised the score */}
+                {indicatorEvidence.length > 0 && (
+                  <div>
+                    <h3 className="evidence-group-title group-indicator">Raised the score</h3>
+                    {indicatorEvidence.map((item, idx) => (
+                      <EvidenceCard key={`ind-${idx}`} item={item} />
+                    ))}
+                  </div>
+                )}
+
+                {/* clear heading Checked and did not raise the score */}
+                {clearEvidence.length > 0 && (
+                  <div>
+                    <h3 className="evidence-group-title group-clear">
+                      Checked and did not raise the score
+                    </h3>
+                    {clearEvidence.map((item, idx) => (
+                      <EvidenceCard key={`clr-${idx}`} item={item} />
+                    ))}
+                  </div>
+                )}
+
+                {/* unknown heading Not checked */}
+                {unknownEvidence.length > 0 && (
+                  <div>
+                    <h3 className="evidence-group-title group-unknown">Not checked</h3>
+                    {unknownEvidence.map((item, idx) => (
+                      <EvidenceCard key={`unk-${idx}`} item={item} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recommendations as a short list */}
+              {report.recommendations && report.recommendations.length > 0 && (
+                <div className="recommendations-box">
+                  <h4 className="recommendations-title">Recommendations</h4>
+                  <ul className="recommendations-list">
+                    {report.recommendations.map((rec, idx) => (
+                      <li key={idx}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Button Download report */}
+              <div className="report-actions">
+                <button
+                  type="button"
+                  className="btn-download"
+                  onClick={handleDownloadReport}
+                >
+                  Download report
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// Subcomponent for each Evidence Card
+function EvidenceCard({ item }) {
+  const statusLabels = {
+    indicator: 'Indicator',
+    clear: 'Clear',
+    unknown: 'Not checked',
+  };
+
+  const statusLabel = statusLabels[item.status] || item.status;
+
+  return (
+    <article className="evidence-card">
+      <div className="evidence-card-header">
+        <h4 className="evidence-title">{item.title}</h4>
+        <div className="evidence-header-right">
+          {item.points > 0 && (
+            <span className="evidence-points">+{item.points}</span>
+          )}
+          {/* Print the status word on the card. Do not rely on color alone. */}
+          <span className={`evidence-status-pill status-${item.status}`}>
+            {statusLabel}
+          </span>
+        </div>
+      </div>
+
+      <p className="evidence-reason">{item.reason}</p>
+
+      {/* excerpt in quotation marks when non-empty */}
+      {item.excerpt && item.excerpt.trim() !== '' && (
+        <blockquote className="evidence-excerpt">
+          &ldquo;{item.excerpt}&rdquo;
+        </blockquote>
+      )}
+
+      <div className="evidence-footer">
+        <span className="evidence-source">Source: {item.source}</span>
+        {item.source_url && (
+          <a
+            href={item.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="evidence-link"
+          >
+            {item.source_url}
+          </a>
+        )}
+      </div>
+
+      {/* If also_found_in is non-empty, add Also found in: ... */}
+      {item.also_found_in && item.also_found_in.length > 0 && (
+        <div className="evidence-also">
+          Also found in: {item.also_found_in.join(', ')}
+        </div>
+      )}
+    </article>
+  );
+}
