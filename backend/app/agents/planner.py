@@ -26,6 +26,7 @@ def heuristic_spawns(
     website = (data.get("website_url") or "").strip()
     message = data.get("message") or ""
     pdf = data.get("pdf")
+    image = data.get("image")
 
     def _add(agent_type: str, reason: str, inputs: dict[str, Any], priority: int = 50) -> None:
         if agent_type in already or agent_type == "fixed_checkers":
@@ -71,10 +72,15 @@ def heuristic_spawns(
             {"website_url": website, "company_name": company},
             priority=50,
         )
-    if pdf:
+    if pdf or image:
+        reason = "Offer image uploaded — Gemma vision extracts quoted claims"
+        if pdf and image:
+            reason = "PDF and offer image uploaded — Gemma vision extracts quoted claims"
+        elif pdf:
+            reason = "PDF uploaded — rasterize first page for Gemma vision"
         _add(
             "document_multimodal",
-            "PDF uploaded — extract quoted claims from first page",
+            reason,
             {},
             priority=35,
         )

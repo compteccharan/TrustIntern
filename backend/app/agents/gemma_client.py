@@ -84,6 +84,7 @@ class GemmaClient:
         *,
         image_b64: str,
         text_hint: str = "",
+        mime_type: str = "image/png",
     ) -> list[dict[str, str]]:
         """Multimodal: list scam-relevant claims with exact quotes; do not score."""
         import asyncio
@@ -103,7 +104,7 @@ class GemmaClient:
                 types.Content(
                     role="user",
                     parts=[
-                        types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                        types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/png"),
                         types.Part.from_text(text=prompt),
                     ],
                 )

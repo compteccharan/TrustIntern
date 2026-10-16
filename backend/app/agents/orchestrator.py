@@ -124,7 +124,16 @@ class Orchestrator:
         planner_mode = mode
         if not planner_mode_emitted:
             await self.bus.publish(
-                _event(run_id, "planner_mode", {"mode": planner_mode})
+                _event(
+                    run_id,
+                    "planner_mode",
+                    {
+                        "mode": planner_mode,
+                        "model": self.gemma.model if planner_mode == "gemma" else None,
+                        "weights": "open-weight" if planner_mode == "gemma" else None,
+                        "provider": "gemini-api" if planner_mode == "gemma" else "heuristic",
+                    },
+                )
             )
             planner_mode_emitted = True
 
@@ -301,12 +310,15 @@ class Orchestrator:
                 "website_url": data.get("website_url"),
                 "message_preview": (data.get("message") or "")[:180],
                 "had_pdf": bool(data.get("pdf")),
+                "had_image": bool(data.get("image")),
                 "live_lookups": bool(data.get("live_lookups", True)),
             },
             "agent_trace": agent_trace,
             "narrative": narrative_text,
             "run_id": run_id,
             "planner_mode": planner_mode,
+            "model": self.gemma.model if planner_mode == "gemma" else None,
+            "weights": "open-weight Gemma 4" if planner_mode == "gemma" else None,
         }
 
         if self.persist:

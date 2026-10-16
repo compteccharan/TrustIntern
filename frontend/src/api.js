@@ -90,3 +90,56 @@ export async function fetchInvestigations() {
 export async function fetchInvestigationById(id) {
   return request(`/api/investigations/${id}`);
 }
+
+export async function startAgentRun(formData) {
+  const started = await request('/api/investigations/runs', {
+    method: 'POST',
+    body: formData,
+  });
+  const events = await readRunEvents(started.run_id);
+  const done = [...events].reverse().find((event) => event.type === 'run_done');
+  const reportId = done?.payload?.report_id;
+  if (!reportId) {
+    throw new ApiError('Agent run finished without a saved report.', 500);
+  }
+  return fetchInvestigationById(reportId);
+}
+
+async function readRunEvents(runId) {
+  const url = `${BASE_URL}/api/investigations/runs/${runId}/events`;
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (_) {
+    throw new NetworkError('API is not running. Start the backend on port 8000.');
+  }
+  if (!response.ok || !response.body) {
+    throw new ApiError(`Agent stream failed (${response.status})`, response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const events = [];
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let splitAt = buffer.indexOf('\n\n');
+    while (splitAt !== -1) {
+      const block = buffer.slice(0, splitAt);
+      buffer = buffer.slice(splitAt + 2);
+      const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+      if (dataLine) {
+        const event = JSON.parse(dataLine.slice(5).trim());
+        events.push(event);
+        if (event.type === 'run_done' || event.type === 'error') {
+          return events;
+        }
+      }
+      splitAt = buffer.indexOf('\n\n');
+    }
+  }
+  return events;
+}
