@@ -131,7 +131,7 @@ class Orchestrator:
                         "mode": planner_mode,
                         "model": self.gemma.model if planner_mode == "gemma" else None,
                         "weights": "open-weight" if planner_mode == "gemma" else None,
-                        "provider": "gemini-api" if planner_mode == "gemma" else "heuristic",
+                        "provider": "ollama" if planner_mode == "gemma" else "heuristic",
                     },
                 )
             )
@@ -333,6 +333,7 @@ class Orchestrator:
                     "score": score,
                     "agents_run": agents_run,
                     "planner_mode": planner_mode,
+                    "report": report,
                 },
             )
         )

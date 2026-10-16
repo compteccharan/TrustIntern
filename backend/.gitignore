@@ -1,3 +1,4 @@
+.env
 data/trustintern.db
 __pycache__/
 *.pyc
