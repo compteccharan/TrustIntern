@@ -1,0 +1,2 @@
+{"v":1,"agent":"cursor","cli_version":"0.11.4","type":"user","content":[{"text":"Enable Entire hooks and DevRelay so this repo captures sessions and checkpoints."}]}
+{"v":1,"agent":"cursor","cli_version":"0.11.4","type":"assistant","content":[{"text":"Enabled Cursor session hooks and registered the DevRelay gateway for this repository.","type":"text"}]}
