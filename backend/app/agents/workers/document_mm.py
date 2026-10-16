@@ -82,39 +82,63 @@ def _map_quotes_to_evidence(quotes: list[dict[str, str]], source: str) -> list[d
 async def run(ctx: dict[str, Any], spec: AgentSpec) -> list[dict[str, Any]]:
     data = ctx.get("data") or {}
     pdf_bytes: bytes | None = data.get("pdf") or spec.inputs.get("pdf_bytes")
+    image = data.get("image") or {}
+    image_bytes: bytes | None = image.get("bytes") if isinstance(image, dict) else None
+    image_mime = (image.get("mime") if isinstance(image, dict) else None) or "image/png"
     evidence: list[dict[str, Any]] = []
 
-    if not pdf_bytes:
+    if not pdf_bytes and not image_bytes:
         return [
             clear_or_unknown(
                 indicator_id="document_multimodal",
-                title="No PDF for multimodal review",
-                reason="No offer letter PDF was uploaded.",
+                title="No document or image for multimodal review",
+                reason="Upload an offer-letter PDF or an image (PNG, JPEG, or WebP).",
                 status="unknown",
                 source="Document multimodal",
             )
         ]
 
-    raster = await asyncio.to_thread(rasterize_first_page, pdf_bytes)
-    ctx["pdf_page_png"] = raster.get("png_bytes") if raster.get("ok") else None
+    vision_bytes: bytes | None = None
+    vision_mime = "image/png"
+    text = ""
+    raster_error = None
 
-    # Prefer text already extracted by fixed checkers path if present
-    from app.document import extract_pdf_text
+    if image_bytes:
+        vision_bytes = image_bytes
+        vision_mime = image_mime
+    if pdf_bytes:
+        from app.document import extract_pdf_text
 
-    extracted = await asyncio.to_thread(extract_pdf_text, pdf_bytes)
-    text = extracted.get("text") or ""
+        extracted = await asyncio.to_thread(extract_pdf_text, pdf_bytes)
+        text = extracted.get("text") or ""
+        if vision_bytes is None:
+            raster = await asyncio.to_thread(rasterize_first_page, pdf_bytes)
+            ctx["pdf_page_png"] = raster.get("png_bytes") if raster.get("ok") else None
+            if raster.get("ok"):
+                vision_bytes = raster["png_bytes"]
+                vision_mime = "image/png"
+            else:
+                raster_error = raster.get("error")
 
     quotes: list[dict[str, str]] = []
     gemma = ctx.get("gemma")
     force_heuristic = bool(ctx.get("force_heuristic"))
+    used_gemma = False
 
-    if gemma and raster.get("ok") and raster.get("png_bytes") and not force_heuristic:
+    if (
+        gemma
+        and getattr(gemma, "available", False)
+        and vision_bytes
+        and not force_heuristic
+    ):
         try:
-            b64 = base64.b64encode(raster["png_bytes"]).decode("ascii")
+            b64 = base64.b64encode(vision_bytes).decode("ascii")
             quotes = await gemma.extract_document_claims(
                 image_b64=b64,
                 text_hint=text[:1500],
+                mime_type=vision_mime,
             )
+            used_gemma = bool(quotes)
         except Exception:  # noqa: BLE001
             quotes = []
 
@@ -125,8 +149,17 @@ async def run(ctx: dict[str, Any], spec: AgentSpec) -> list[dict[str, Any]]:
         evidence.append(
             clear_or_unknown(
                 indicator_id="document_multimodal",
-                title="Multimodal document claims extracted",
-                reason="Quoted scam-relevant claims from the offer letter (not scored by Gemma).",
+                title=(
+                    "Gemma 4 vision claims extracted"
+                    if used_gemma
+                    else "Document claims extracted without vision model"
+                ),
+                reason=(
+                    "Open-weight Gemma 4 read the image and returned quoted claims. "
+                    "Points still come only from scoring.py."
+                    if used_gemma
+                    else "No Gemma vision result; phrase rules were applied to extracted text."
+                ),
                 status="clear",
                 source="Document multimodal",
                 excerpt="; ".join(q.get("quote", "")[:80] for q in quotes[:3]),
@@ -136,8 +169,15 @@ async def run(ctx: dict[str, Any], spec: AgentSpec) -> list[dict[str, Any]]:
         evidence.extend(_map_quotes_to_evidence(quotes, "Offer letter (multimodal)"))
     else:
         reason = "No claims extracted."
-        if not raster.get("ok"):
-            reason = f"Page raster failed ({raster.get('error')}); no quotes available."
+        if image_bytes and (
+            force_heuristic or not gemma or not getattr(gemma, "available", False)
+        ):
+            reason = (
+                "Image received, but Gemma vision did not run. "
+                "Set GEMINI_API_KEY so open-weight Gemma 4 can read it."
+            )
+        elif raster_error:
+            reason = f"Page raster failed ({raster_error}); no quotes available."
         evidence.append(
             clear_or_unknown(
                 indicator_id="document_multimodal",

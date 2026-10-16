@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  fetchHealth,
   fetchSamples,
   submitInvestigation,
+  startAgentRun,
   fetchInvestigations,
   fetchInvestigationById,
   ApiError,
@@ -18,6 +20,8 @@ export default function App() {
   const [message, setMessage] = useState('');
   const [liveLookups, setLiveLookups] = useState(true);
   const [pdfFile, setPdfFile] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [gemmaStatus, setGemmaStatus] = useState(null);
 
   // Validation errors from 422: { field_name: errorMessage }
   const [fieldErrors, setFieldErrors] = useState({});
@@ -41,10 +45,14 @@ export default function App() {
   const [historyList, setHistoryList] = useState([]);
 
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   // Load history on mount
   useEffect(() => {
     loadHistory();
+    fetchHealth()
+      .then(setGemmaStatus)
+      .catch(() => setGemmaStatus(null));
   }, []);
 
   // Helper to compute unique key for an investigation
@@ -116,8 +124,12 @@ export default function App() {
       setMessage(sample.message || '');
       setLiveLookups(false); // lookups off for samples
       setPdfFile(null);
+      setImageFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      if (imageInputRef.current) {
+        imageInputRef.current.value = '';
       }
 
       setIsSampleLoaded(true);
@@ -172,7 +184,8 @@ export default function App() {
         return (
           getInvestigationKey(h) === currentKey &&
           s.live_lookups === liveLookups &&
-          !pdfFile
+          !pdfFile &&
+          !imageFile
         );
       });
 
@@ -193,8 +206,14 @@ export default function App() {
       if (pdfFile) {
         formData.append('pdf', pdfFile);
       }
+      if (imageFile) {
+        formData.append('image', imageFile);
+      }
 
-      const result = await submitInvestigation(formData);
+      const useVisionRun = Boolean(pdfFile || imageFile);
+      const result = useVisionRun
+        ? await startAgentRun(formData)
+        : await submitInvestigation(formData);
       setReport(result);
       setIsSampleLoaded(false); // Manual run completed
       await loadHistory();
@@ -383,6 +402,13 @@ export default function App() {
         <div className="header-row">
           <h1 className="app-title">TrustIntern</h1>
           <div className="disclaimer-banner">{activeDisclaimer}</div>
+          {gemmaStatus && (
+            <div className="disclaimer-banner">
+              {gemmaStatus.gemma_configured
+                ? `Open-weight ${gemmaStatus.model} via Gemini API is configured. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
+                : `Gemma is not configured. Set GEMINI_API_KEY so open-weight ${gemmaStatus.model || 'gemma-4-26b-a4b-it'} can read images. Until then, vision runs stay on phrase rules.`}
+            </div>
+          )}
         </div>
 
         <div className="samples-row">
@@ -564,6 +590,27 @@ export default function App() {
               />
             </div>
 
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" htmlFor="offer-image">
+                  Offer screenshot
+                </label>
+                {fieldErrors.image && <span className="field-error">{fieldErrors.image}</span>}
+              </div>
+              <input
+                id="offer-image"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                ref={imageInputRef}
+                className="file-input"
+                onChange={(e) => {
+                  setImageFile(e.target.files?.[0] || null);
+                  setIsSampleLoaded(false);
+                }}
+                disabled={isLoading}
+              />
+            </div>
+
             {/* checkbox Run live website and domain-age lookups */}
             <label className="checkbox-row">
               <input
@@ -642,6 +689,13 @@ export default function App() {
                     {report.risk_level}
                   </div>
                 </div>
+                {report.planner_mode && (
+                  <div className="equation-row">
+                    {report.planner_mode === 'gemma'
+                      ? `Vision planner: open-weight ${report.model || 'Gemma 4'} (Gemini API)`
+                      : 'Vision planner: heuristic fallback (no live Gemma call)'}
+                  </div>
+                )}
 
                 {/* Equation: one chip per equation item, {label} +{points}, then = {score} */}
                 <div className="equation-row">

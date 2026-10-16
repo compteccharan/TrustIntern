@@ -45,6 +45,13 @@ def test_heuristic_spawns_pdf_document_mm():
     assert any(s.agent_type == "document_multimodal" for s in specs)
 
 
+def test_heuristic_spawns_image_document_mm():
+    data = _suspicious_data()
+    data["image"] = {"bytes": b"png", "mime": "image/png"}
+    specs = heuristic_spawns(data, already=set(), depth=1)
+    assert any(s.agent_type == "document_multimodal" for s in specs)
+
+
 def test_heuristic_skips_already_spawned():
     data = _suspicious_data()
     specs = heuristic_spawns(

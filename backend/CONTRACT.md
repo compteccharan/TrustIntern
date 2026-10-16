@@ -34,6 +34,7 @@ Interactive docs: `/docs`
 | `message` | yes | 1–20000 characters |
 | `live_lookups` | no | bool, default `true` (samples send `false`) |
 | `pdf` | no | PDF only, max 5 MB |
+| `image` | no | PNG, JPEG, WebP, or GIF, max 5 MB. Sent to Gemma vision on `POST /runs` |
 
 Validation errors return HTTP 422:
 
@@ -80,7 +81,7 @@ Each SSE message is `data: {AgentEvent JSON}\n\n`. Stream ends after `run_done`.
 | `type` | Meaning |
 | --- | --- |
 | `run_started` | Orchestrator began |
-| `planner_mode` | `payload.mode` is `gemma` or `heuristic` |
+| `planner_mode` | `payload.mode` is `gemma` or `heuristic`. When `gemma`, `payload.model` is the open-weight id (default `gemma-4-26b-a4b-it`) and `payload.provider` is `gemini-api` |
 | `agent_started` | Allowlisted agent began |
 | `agent_finding` | One evidence row from an agent |
 | `agent_spawn` | Planner/heuristic enqueued a child agent |

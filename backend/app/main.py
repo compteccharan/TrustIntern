@@ -15,7 +15,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.agents.bus import RUN_COMPLETE, bus
 from app.agents.orchestrator import get_run, start_run
 from app.analyze import Lookups, analyze_opportunity
+from app.agents.gemma_client import DEFAULT_MODEL
 from app.document import MAX_PDF_BYTES
+
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+IMAGE_MIMES = {
+    "image/png": "image/png",
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/webp": "image/webp",
+    "image/gif": "image/gif",
+}
 from app.samples import get_samples
 from app.storage import get_report, init_db, list_reports, save_report
 
@@ -78,6 +88,22 @@ def _parse_bool(value: str | bool | None, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _image_mime(upload: UploadFile) -> str | None:
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    if content_type in IMAGE_MIMES:
+        return IMAGE_MIMES[content_type]
+    name = (upload.filename or "").lower()
+    if name.endswith(".png"):
+        return "image/png"
+    if name.endswith(".jpg") or name.endswith(".jpeg"):
+        return "image/jpeg"
+    if name.endswith(".webp"):
+        return "image/webp"
+    if name.endswith(".gif"):
+        return "image/gif"
+    return None
+
+
 async def _parse_investigation_form(
     company_name: str,
     message: str,
@@ -86,6 +112,7 @@ async def _parse_investigation_form(
     website_url: str | None,
     live_lookups: str,
     pdf: UploadFile | None,
+    image: UploadFile | None = None,
 ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     fields: dict[str, Any] = {}
 
@@ -115,6 +142,17 @@ async def _parse_investigation_form(
         else:
             pdf_bytes = raw
 
+    image_payload: dict[str, Any] | None = None
+    if image is not None and (image.filename or "").strip():
+        raw_img = await image.read()
+        mime = _image_mime(image)
+        if len(raw_img) > MAX_IMAGE_BYTES:
+            fields["image"] = "Image must be at most 5 MB"
+        elif not mime:
+            fields["image"] = "PNG, JPEG, WebP, or GIF only"
+        else:
+            image_payload = {"bytes": raw_img, "mime": mime}
+
     if fields:
         return None, _validation_error("Request validation failed", fields)
 
@@ -126,13 +164,23 @@ async def _parse_investigation_form(
         "message": message,
         "live_lookups": _parse_live_lookups(live_lookups),
         "pdf": pdf_bytes,
+        "image": image_payload,
     }
     return data, None
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    import os
+
+    configured = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
+    return {
+        "status": "ok",
+        "model": os.environ.get("GEMMA_MODEL", DEFAULT_MODEL),
+        "weights": "open-weight",
+        "provider": "gemini-api",
+        "gemma_configured": configured,
+    }
 
 
 @app.get("/api/samples")
@@ -149,6 +197,7 @@ async def create_investigation(
     website_url: str | None = Form(None),
     live_lookups: str = Form("true"),
     pdf: UploadFile | None = File(None),
+    image: UploadFile | None = File(None),
 ) -> Any:
     data, err = await _parse_investigation_form(
         company_name,
@@ -158,6 +207,7 @@ async def create_investigation(
         website_url,
         live_lookups,
         pdf,
+        image,
     )
     if err is not None:
         return err
@@ -176,6 +226,7 @@ async def create_investigation_run(
     live_lookups: str = Form("true"),
     force_heuristic: str = Form("false"),
     pdf: UploadFile | None = File(None),
+    image: UploadFile | None = File(None),
 ) -> Any:
     """Start async multi-agent OSINT run; subscribe via GET .../events."""
     data, err = await _parse_investigation_form(
@@ -186,6 +237,7 @@ async def create_investigation_run(
         website_url,
         live_lookups,
         pdf,
+        image,
     )
     if err is not None:
         return err

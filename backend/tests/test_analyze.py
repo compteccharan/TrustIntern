@@ -54,7 +54,12 @@ def test_samples_endpoint_three_fictional():
 
 def test_health():
     client = TestClient(app)
-    assert client.get("/api/health").json() == {"status": "ok"}
+    body = client.get("/api/health").json()
+    assert body["status"] == "ok"
+    assert body["weights"] == "open-weight"
+    assert body["provider"] == "gemini-api"
+    assert body["model"]
+    assert body["gemma_configured"] is False
 
 
 def test_suspicious_score_90():
