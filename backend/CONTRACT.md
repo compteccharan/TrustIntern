@@ -14,7 +14,10 @@ Disclaimer (exact): `Heuristic indicator score, not a probability of fraud.`
 | --- | --- | --- |
 | GET | `/api/health` | `{"status":"ok"}` |
 | GET | `/api/samples` | Three fictional sample inputs (no scores) |
-| POST | `/api/investigations` | Multipart analyze + save + return full report |
+| POST | `/api/investigations` | Multipart analyze + save + return full report (sync, samples / offline lock) |
+| POST | `/api/investigations/runs` | Start async multi-agent OSINT run; returns `{run_id, status:"running"}` |
+| GET | `/api/investigations/runs/{run_id}/events` | SSE `text/event-stream` of `AgentEvent` JSON until `run_done` |
+| GET | `/api/investigations/runs/{run_id}` | Run status + final report when done |
 | GET | `/api/investigations` | Newest first, full reports |
 | GET | `/api/investigations/{id}` | One report or 404 |
 
@@ -39,6 +42,65 @@ Validation errors return HTTP 422:
 ```
 
 Lookup failures (fetch, PDF parse, RDAP) never fail the HTTP request; they become evidence with `status: "unknown"` and `points: 0`.
+
+## POST `/api/investigations/runs`
+
+Same multipart fields as sync `POST /api/investigations`, plus:
+
+| Field | Required | Rules |
+| --- | --- | --- |
+| `force_heuristic` | no | bool, default `false`. When `true`, skip Gemma and use heuristic spawn rules |
+
+Response:
+
+```json
+{"run_id":"<uuid>","status":"running"}
+```
+
+Then subscribe:
+
+```http
+GET /api/investigations/runs/{run_id}/events
+Accept: text/event-stream
+```
+
+Each SSE message is `data: {AgentEvent JSON}\n\n`. Stream ends after `run_done`.
+
+### AgentEvent shape
+
+```json
+{
+  "type": "run_started",
+  "run_id": "...",
+  "ts": "2026-10-16T12:00:00+05:30",
+  "payload": {}
+}
+```
+
+| `type` | Meaning |
+| --- | --- |
+| `run_started` | Orchestrator began |
+| `planner_mode` | `payload.mode` is `gemma` or `heuristic` |
+| `agent_started` | Allowlisted agent began |
+| `agent_finding` | One evidence row from an agent |
+| `agent_spawn` | Planner/heuristic enqueued a child agent |
+| `agent_done` | Agent finished |
+| `score_ready` | Deterministic score from `scoring.py` only |
+| `narrative` | Plain-language restatement of the ledger (not a score) |
+| `run_done` | Final; stream closes |
+| `error` | Includes `unknown_agent_type` for planner proposals outside the registry |
+
+Typical order: `run_started` → `planner_mode` → `agent_started(fixed_checkers)` → findings → `agent_spawn(...)` → more agents → `score_ready` → `narrative` → `run_done`.
+
+### Scoring boundary (non-negotiable)
+
+- Only `scoring.py` weights create points
+- Gemma / OSINT never invent indicator points
+- Unknown `agent_type` from the planner → `error` with `reason: "unknown_agent_type"`; never executed
+- Registry allowlist only: `fixed_checkers`, `company_osint`, `recruiter_osint`, `domain_osint`, `document_multimodal`, `web_complaint_search`, `entity_followup`
+- Caps: max 8 agents, max depth 2, ~45s wall clock
+
+Persisted reports from runs may include `agent_trace`, `narrative`, `run_id`, and `planner_mode` without changing score semantics.
 
 ## Report shape
 
@@ -111,10 +173,37 @@ All have `"fictional": true`. Demo uses `live_lookups=false`.
 | consistent | 0 |
 | limited | 0 |
 
+## Env vars (multi-agent / Gemma)
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | for Gemma path | Google AI Studio / Gemini API key |
+| `GEMMA_MODEL` | no | Default `gemma-4-26b-a4b-it` |
+| `FORCE_HEURISTIC_PLANNER` | no | `1`/`true` forces heuristic spawn (demo without key) |
+
+Without a key, the planner emits `planner_mode: heuristic` and still runs fixed checkers + OSINT workers.
+
 ## Run
 
 ```bash
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
+```
+
+### Start a live multi-agent run + SSE
+
+```bash
+# Start run (force heuristic for offline demo)
+curl -s -X POST http://127.0.0.1:8000/api/investigations/runs \
+  -F company_name="Aurora Tech Pvt Ltd" \
+  -F recruiter_name="Riya Shah" \
+  -F recruiter_email="hr.aurora@gmail.com" \
+  -F website_url="https://quickplacement-jobs.example" \
+  -F message="Congratulations. Pay a registration fee of Rs 2000..." \
+  -F live_lookups=false \
+  -F force_heuristic=true
+
+# Subscribe (replace RUN_ID)
+curl -N http://127.0.0.1:8000/api/investigations/runs/RUN_ID/events
 ```
