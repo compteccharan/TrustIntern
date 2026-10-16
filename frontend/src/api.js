@@ -16,8 +16,14 @@ export class ApiError extends Error {
   }
 }
 
+function apiDownMessage() {
+  return BASE_URL
+    ? 'API is not running. Start the backend on port 8000.'
+    : 'The investigation API did not respond.';
+}
+
 export class NetworkError extends Error {
-  constructor(message = 'API is not running. Start the backend on port 8000.') {
+  constructor(message = apiDownMessage()) {
     super(message);
     this.name = 'NetworkError';
     this.isNetworkError = true;
@@ -30,7 +36,7 @@ async function request(path, options = {}) {
   try {
     response = await fetch(url, options);
   } catch (err) {
-    throw new NetworkError('API is not running. Start the backend on port 8000.');
+    throw new NetworkError(apiDownMessage());
   }
 
   if (response.status === 422) {
@@ -99,12 +105,48 @@ export async function fetchInvestigationById(id) {
 }
 
 export async function startAgentRun(formData) {
-  const started = await request('/api/investigations/runs', {
-    method: 'POST',
-    body: formData,
-  });
-  const events = await readRunEvents(started.run_id);
+  const url = `${BASE_URL}/api/investigations/runs/stream`;
+  let response;
+  try {
+    response = await fetch(url, { method: 'POST', body: formData });
+  } catch (_) {
+    throw new NetworkError(apiDownMessage());
+  }
+
+  if (response.status === 422) {
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch (_) {
+      // ignore json parse error
+    }
+    const fields = errorData?.fields || {};
+    const message = errorData?.message || 'Request validation failed';
+    throw new ApiError(message, 422, fields);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+    let detail = `Agent stream failed (${response.status})`;
+    try {
+      const errJson = await response.json();
+      detail = errJson.detail || errJson.message || detail;
+    } catch (_) {
+      if (contentType.includes('text/html')) {
+        detail = 'The investigation API was not reached.';
+      }
+    }
+    throw new ApiError(detail, response.status || 502);
+  }
+
+  const events = await readEventStream(response);
   const done = [...events].reverse().find((event) => event.type === 'run_done');
+  if (done?.payload?.error && !done?.payload?.report) {
+    throw new ApiError(done.payload.error, 500);
+  }
+  if (done?.payload?.report) {
+    return done.payload.report;
+  }
   const reportId = done?.payload?.report_id;
   if (!reportId) {
     throw new ApiError('Agent run finished without a saved report.', 500);
@@ -112,18 +154,7 @@ export async function startAgentRun(formData) {
   return fetchInvestigationById(reportId);
 }
 
-async function readRunEvents(runId) {
-  const url = `${BASE_URL}/api/investigations/runs/${runId}/events`;
-  let response;
-  try {
-    response = await fetch(url);
-  } catch (_) {
-    throw new NetworkError('API is not running. Start the backend on port 8000.');
-  }
-  if (!response.ok || !response.body) {
-    throw new ApiError(`Agent stream failed (${response.status})`, response.status);
-  }
-
+async function readEventStream(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

@@ -87,7 +87,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.isNetworkError) {
-        setGlobalError('API is not running. Start the backend on port 8000.');
+        setGlobalError(err.message || 'The investigation API did not respond.');
       }
     }
   }
@@ -159,7 +159,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.isNetworkError) {
-        setGlobalError('API is not running. Start the backend on port 8000.');
+        setGlobalError(err.message || 'The investigation API did not respond.');
       } else if (err instanceof ApiError && err.status === 422) {
         setFieldErrors(err.fields || {});
       } else {
@@ -220,7 +220,7 @@ export default function App() {
       await loadHistory();
     } catch (err) {
       if (err.isNetworkError) {
-        setGlobalError('API is not running. Start the backend on port 8000.');
+        setGlobalError(err.message || 'The investigation API did not respond.');
       } else if (err instanceof ApiError && err.status === 422) {
         setFieldErrors(err.fields || {});
       } else {
@@ -252,7 +252,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.isNetworkError) {
-        setGlobalError('API is not running. Start the backend on port 8000.');
+        setGlobalError(err.message || 'The investigation API did not respond.');
       } else {
         setGlobalError(err.message || 'Failed to reopen investigation.');
       }
@@ -285,20 +285,20 @@ export default function App() {
   const unknownEvidence = (report?.evidence || []).filter((e) => e.status === 'unknown');
 
   return (
-    <div className="desk-container">
-      {/* Top of the page, always visible */}
-      <header className="top-bar">
-        <div className="header-row">
+    <div className={`desk-container${report ? ' has-report' : ''}`}>
+      <header className="masthead">
+        <div className="masthead-brand">
+          <p className="desk-kicker">Investigation desk</p>
           <h1 className="app-title">TrustIntern</h1>
-          <div className="disclaimer-banner">{activeDisclaimer}</div>
-          {gemmaStatus && (
-            <div className="disclaimer-banner">
-              {gemmaStatus.gemma_configured
-                ? `Open-weight ${gemmaStatus.model} is running locally in Ollama. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
-                : `Local Gemma is not reachable. Start Ollama and run: ollama pull ${gemmaStatus.model || 'gemma4:e2b'}. Until then, vision stays on phrase rules.`}
-            </div>
-          )}
         </div>
+        <p className="disclaimer-banner">{activeDisclaimer}</p>
+        {gemmaStatus && (
+          <p className="gemma-status">
+            {gemmaStatus.gemma_configured
+              ? `Open-weight ${gemmaStatus.model} is running locally in Ollama. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
+              : `Local Gemma is not reachable. Start Ollama and run: ollama pull ${gemmaStatus.model || 'gemma4:e2b'}. Until then, vision stays on phrase rules.`}
+          </p>
+        )}
 
         <div className="samples-row">
           <span className="sample-label">Fictional samples:</span>
@@ -329,18 +329,23 @@ export default function App() {
         </div>
 
         {isSampleLoaded && (
-          <div className="sample-active-note">
+          <p className="sample-active-note">
             Fictional sample. Live website and domain-age lookups are off so the score stays stable.
-          </div>
+          </p>
         )}
       </header>
 
-      {/* Global Error Banner (API Down, Network, etc.) */}
-      {globalError && <div className="error-bar">{globalError}</div>}
+      {globalError && <div className="error-bar" role="alert">{globalError}</div>}
+      {isLoading && (
+        <div className="in-flight-banner" role="status">Checking the offer...</div>
+      )}
 
       <div className="main-grid">
         {/* Left Column: Form (380px) */}
-        <section className="form-panel">
+        <section className="form-panel" aria-label="Case intake">
+          <div className="sheet-head">
+            <span className="sheet-kicker">Intake</span>
+          </div>
           <form onSubmit={handleInvestigate}>
             {/* Company */}
             <div className="form-group">
@@ -457,7 +462,7 @@ export default function App() {
               />
             </div>
 
-            {/* Offer letter PDF */}
+            <div className="exhibit-block">
             <div className="form-group">
               <div className="form-label-row">
                 <label className="form-label" htmlFor="pdf">
@@ -499,6 +504,7 @@ export default function App() {
                 disabled={isLoading}
               />
             </div>
+            </div>
 
             {/* checkbox Run live website and domain-age lookups */}
             <label className="checkbox-row">
@@ -528,9 +534,7 @@ export default function App() {
           <div className="history-section">
             <h3 className="history-heading">Investigation History</h3>
             {historyList.length === 0 ? (
-              <div style={{ fontSize: '13px', color: 'var(--ink-muted)' }}>
-                No past investigations yet.
-              </div>
+              <p className="history-empty">No past investigations yet.</p>
             ) : (
               <ul className="history-list">
                 {historyList.map((item) => (
@@ -555,35 +559,50 @@ export default function App() {
         </section>
 
         {/* Right Column: Report fluid */}
-        <section className="report-panel">
-          {isLoading && (
-            <div className="in-flight-banner">Checking the offer...</div>
-          )}
-
+        <section className="report-panel" aria-label="Case finding">
           {!isLoading && !report && (
-            <div className="report-empty">
-              Submit an offer or load a fictional sample.
+            <div className="case-cover">
+              <div className="case-cover-head">
+                <span className="sheet-kicker">Open case</span>
+              </div>
+              <div className="case-cover-score" aria-hidden="true">
+                <span className="case-cover-dash">—</span>
+                <span className="case-cover-denom">/100</span>
+              </div>
+              <p className="report-empty">Submit an offer or load a fictional sample.</p>
+              <div className="case-rules" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
             </div>
           )}
 
           {report && (
             <>
-              {/* Sticky Score Block */}
               <div className="score-block">
+                <div className="score-head">
+                  <span className="score-kicker">Finding</span>
+                  {report.id ? (
+                    <span className="case-file-no">File {String(report.id).padStart(3, '0')}</span>
+                  ) : null}
+                </div>
                 <div className="score-main-row">
                   <div className={`score-number ${getScoreBandClass(report.score)}`}>
-                    {report.score}/100
+                    <span className="score-value">{report.score}</span>
+                    <span className="score-denom">/100</span>
                   </div>
                   <div className={`risk-level-badge ${getScoreBandClass(report.score)}`}>
                     {report.risk_level}
                   </div>
                 </div>
                 {report.planner_mode && (
-                  <div className="equation-row">
+                  <p className="planner-note">
                     {report.planner_mode === 'gemma'
                       ? `Vision planner: open-weight ${report.model || 'Gemma 4'} (local Ollama)`
                       : 'Vision planner: heuristic fallback (no live Gemma call)'}
-                  </div>
+                  </p>
                 )}
 
                 {/* Equation: one chip per equation item, {label} +{points}, then = {score} */}
@@ -599,6 +618,7 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="dossier">
               {/* Group Evidence by Status */}
               <div className="evidence-section">
                 {/* indicator heading Raised the score */}
@@ -655,6 +675,7 @@ export default function App() {
                 >
                   Download PDF
                 </button>
+              </div>
               </div>
             </>
           )}
