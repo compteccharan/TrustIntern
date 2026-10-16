@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.agents.bus import RUN_COMPLETE, bus
+from app.agents.orchestrator import get_run, start_run
 from app.analyze import Lookups, analyze_opportunity
 from app.document import MAX_PDF_BYTES
 from app.samples import get_samples
@@ -22,7 +26,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="TrustIntern API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="TrustIntern API", version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,26 +70,23 @@ def _parse_live_lookups(value: str | bool | None) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-@app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def _parse_bool(value: str | bool | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-@app.get("/api/samples")
-def samples() -> list[dict[str, Any]]:
-    return get_samples()
-
-
-@app.post("/api/investigations")
-async def create_investigation(
-    company_name: str = Form(...),
-    message: str = Form(...),
-    recruiter_name: str | None = Form(None),
-    recruiter_email: str | None = Form(None),
-    website_url: str | None = Form(None),
-    live_lookups: str = Form("true"),
-    pdf: UploadFile | None = File(None),
-) -> Any:
+async def _parse_investigation_form(
+    company_name: str,
+    message: str,
+    recruiter_name: str | None,
+    recruiter_email: str | None,
+    website_url: str | None,
+    live_lookups: str,
+    pdf: UploadFile | None,
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     fields: dict[str, Any] = {}
 
     company_name = (company_name or "").strip()
@@ -115,7 +116,7 @@ async def create_investigation(
             pdf_bytes = raw
 
     if fields:
-        return _validation_error("Request validation failed", fields)
+        return None, _validation_error("Request validation failed", fields)
 
     data = {
         "company_name": company_name,
@@ -126,8 +127,139 @@ async def create_investigation(
         "live_lookups": _parse_live_lookups(live_lookups),
         "pdf": pdf_bytes,
     }
+    return data, None
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/samples")
+def samples() -> list[dict[str, Any]]:
+    return get_samples()
+
+
+@app.post("/api/investigations")
+async def create_investigation(
+    company_name: str = Form(...),
+    message: str = Form(...),
+    recruiter_name: str | None = Form(None),
+    recruiter_email: str | None = Form(None),
+    website_url: str | None = Form(None),
+    live_lookups: str = Form("true"),
+    pdf: UploadFile | None = File(None),
+) -> Any:
+    data, err = await _parse_investigation_form(
+        company_name,
+        message,
+        recruiter_name,
+        recruiter_email,
+        website_url,
+        live_lookups,
+        pdf,
+    )
+    if err is not None:
+        return err
+    assert data is not None
     report = analyze_opportunity(data, Lookups())
     return save_report(report)
+
+
+@app.post("/api/investigations/runs")
+async def create_investigation_run(
+    company_name: str = Form(...),
+    message: str = Form(...),
+    recruiter_name: str | None = Form(None),
+    recruiter_email: str | None = Form(None),
+    website_url: str | None = Form(None),
+    live_lookups: str = Form("true"),
+    force_heuristic: str = Form("false"),
+    pdf: UploadFile | None = File(None),
+) -> Any:
+    """Start async multi-agent OSINT run; subscribe via GET .../events."""
+    data, err = await _parse_investigation_form(
+        company_name,
+        message,
+        recruiter_name,
+        recruiter_email,
+        website_url,
+        live_lookups,
+        pdf,
+    )
+    if err is not None:
+        return err
+    assert data is not None
+    run_id = await start_run(
+        data,
+        force_heuristic=_parse_bool(force_heuristic, default=False),
+    )
+    return {"run_id": run_id, "status": "running"}
+
+
+@app.get("/api/investigations/runs/{run_id}/events")
+async def investigation_run_events(run_id: str) -> StreamingResponse:
+    """SSE stream of AgentEvent JSON objects; ends after run_done."""
+    meta = get_run(run_id)
+    queue = await bus.subscribe(run_id)
+    if queue is None and meta is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_generator():
+        # Wait briefly for the run queue if POST just started
+        q = queue
+        for _ in range(50):
+            if q is not None:
+                break
+            await asyncio.sleep(0.02)
+            q = await bus.subscribe(run_id)
+
+        # Replay history for late subscribers
+        for past in bus.history(run_id):
+            yield f"data: {past.model_dump_json()}\n\n"
+            if past.type == "run_done":
+                return
+
+        if q is None:
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "error",
+                        "run_id": run_id,
+                        "ts": "",
+                        "payload": {"reason": "run_not_found"},
+                    }
+                )
+                + "\n\n"
+            )
+            return
+
+        while True:
+            item = await q.get()
+            if item is RUN_COMPLETE:
+                break
+            yield f"data: {item.model_dump_json()}\n\n"
+            if getattr(item, "type", None) == "run_done":
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/investigations/runs/{run_id}")
+def get_investigation_run(run_id: str) -> dict[str, Any]:
+    meta = get_run(run_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {"run_id": run_id, **meta}
 
 
 @app.get("/api/investigations")
