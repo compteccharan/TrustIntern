@@ -47,11 +47,34 @@ export default function App() {
     loadHistory();
   }, []);
 
+  // Helper to compute unique key for an investigation
+  function getInvestigationKey(item) {
+    const s = item.input_summary || {};
+    const company = (s.company_name || item.company_name || '').trim().toLowerCase();
+    const message = (s.message_preview || item.message || '').trim().toLowerCase();
+    return `${company}:::${message}`;
+  }
+
+  // Deduplicate investigations keeping only the newest unique entries
+  function deduplicateInvestigations(items) {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    const unique = [];
+    for (const item of items) {
+      const key = getInvestigationKey(item);
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        unique.push(item);
+      }
+    }
+    return unique;
+  }
+
   async function loadHistory() {
     try {
       const items = await fetchInvestigations();
       if (Array.isArray(items)) {
-        setHistoryList(items);
+        setHistoryList(deduplicateInvestigations(items));
       }
     } catch (err) {
       if (err.isNetworkError) {
@@ -99,19 +122,28 @@ export default function App() {
 
       setIsSampleLoaded(true);
 
-      // POST to /api/investigations with live_lookups=false
-      const payload = {
-        company_name: sample.company_name,
-        recruiter_name: sample.recruiter_name || '',
-        recruiter_email: sample.recruiter_email || '',
-        website_url: sample.website_url || '',
-        message: sample.message,
-        live_lookups: false,
-      };
+      // Check if an investigation for this sample already exists in history
+      const sampleKeyStr = `${(sample.company_name || '').trim().toLowerCase()}:::${(sample.message || '').slice(0, 180).trim().toLowerCase()}`;
+      const existing = historyList.find((h) => getInvestigationKey(h) === sampleKeyStr);
 
-      const result = await submitInvestigation(payload);
-      setReport(result);
-      loadHistory();
+      if (existing) {
+        // Only log unique investigations: reuse existing report without duplicate log
+        setReport(existing);
+      } else {
+        // POST to /api/investigations with live_lookups=false
+        const payload = {
+          company_name: sample.company_name,
+          recruiter_name: sample.recruiter_name || '',
+          recruiter_email: sample.recruiter_email || '',
+          website_url: sample.website_url || '',
+          message: sample.message,
+          live_lookups: false,
+        };
+
+        const result = await submitInvestigation(payload);
+        setReport(result);
+        await loadHistory();
+      }
     } catch (err) {
       if (err.isNetworkError) {
         setGlobalError('API is not running. Start the backend on port 8000.');
@@ -133,6 +165,24 @@ export default function App() {
     setIsLoading(true);
 
     try {
+      // Check if exact investigation already exists and lookups are off
+      const currentKey = `${companyName.trim().toLowerCase()}:::${message.slice(0, 180).trim().toLowerCase()}`;
+      const existing = historyList.find((h) => {
+        const s = h.input_summary || {};
+        return (
+          getInvestigationKey(h) === currentKey &&
+          s.live_lookups === liveLookups &&
+          !pdfFile
+        );
+      });
+
+      if (existing && !liveLookups) {
+        setReport(existing);
+        setIsSampleLoaded(false);
+        setIsLoading(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('company_name', companyName);
       formData.append('message', message);
@@ -147,7 +197,7 @@ export default function App() {
       const result = await submitInvestigation(formData);
       setReport(result);
       setIsSampleLoaded(false); // Manual run completed
-      loadHistory();
+      await loadHistory();
     } catch (err) {
       if (err.isNetworkError) {
         setGlobalError('API is not running. Start the backend on port 8000.');
