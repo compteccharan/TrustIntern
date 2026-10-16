@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M51SND3EHQK5P45H0DWKD3DY",
+  "session_id": "trustintern-capture-setup",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-16T07:26:15.1964372Z",
+  "branch": "cursor/entire-devrelay-env-cb85",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/agents/workers/company.py",
+    "backend/app/agents/workers/followup.py",
+    "backend/app/agents/workers/recruiter.py",
+    "backend/app/agents/workers/search.py"
+  ],
+  "agent": "Cursor",
+  "model": "cursor",
+  "turn_id": "cd777988a687",
+  "checkpoint_transcript_start": 2,
+  "transcript_lines_at_start": 2,
+  "compact_transcript_start": 2,
+  "initial_attribution": {
+    "calculated_at": "2026-10-16T07:26:15.1889354Z",
+    "agent_lines": 673,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 673,
+    "total_lines_changed": 673,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
