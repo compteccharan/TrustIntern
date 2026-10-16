@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "devrelay-gateway": {
+      "command": "dev_mlh_mcp_server",
+      "args": ["--stdio"]
+    }
+  }
+}
