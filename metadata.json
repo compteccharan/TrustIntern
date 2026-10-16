@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M51PZKS97NZCBGCMEJBJK7AD",
+  "strategy": "manual-commit",
+  "branch": "cursor/entire-devrelay-env-cb85",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/.gitignore",
+    "backend/CONTRACT.md",
+    "backend/app/__init__.py",
+    "backend/app/analyze.py",
+    "backend/app/checks.py",
+    "backend/app/document.py",
+    "backend/app/main.py",
+    "backend/app/samples.py",
+    "backend/app/schemas.py",
+    "backend/app/scoring.py",
+    "backend/app/storage.py",
+    "backend/data/.gitkeep",
+    "backend/pytest.ini",
+    "backend/requirements.txt",
+    "backend/tests/test_analyze.py",
+    "backend/tests/test_scoring.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
