@@ -191,6 +191,43 @@ def test_api_runs_and_sse_stream():
         assert score_evt["payload"]["score"] == 90
 
 
+def test_stream_run_returns_report_in_one_response():
+    with TestClient(app) as client:
+        sample = get_sample("suspicious")
+        assert sample is not None
+        with client.stream(
+            "POST",
+            "/api/investigations/runs/stream",
+            data={
+                "company_name": sample["company_name"],
+                "recruiter_name": sample["recruiter_name"],
+                "recruiter_email": sample["recruiter_email"],
+                "website_url": sample["website_url"],
+                "message": sample["message"],
+                "live_lookups": "false",
+                "force_heuristic": "true",
+            },
+        ) as stream:
+            assert stream.status_code == 200
+            assert "text/event-stream" in stream.headers.get("content-type", "")
+            done = None
+            for line in stream.iter_lines():
+                if not line:
+                    continue
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
+                if not line.startswith("data: "):
+                    continue
+                payload = json.loads(line[6:])
+                if payload.get("type") == "run_done":
+                    done = payload
+                    break
+        assert done is not None
+        report = done["payload"]["report"]
+        assert report["score"] == 90
+        assert report["id"]
+
+
 def test_sync_investigations_still_works():
     with TestClient(app) as client:
         sample = get_sample("suspicious")

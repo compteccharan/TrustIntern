@@ -333,6 +333,7 @@ class Orchestrator:
                     "score": score,
                     "agents_run": agents_run,
                     "planner_mode": planner_mode,
+                    "report": report,
                 },
             )
         )

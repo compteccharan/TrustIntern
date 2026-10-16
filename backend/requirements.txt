@@ -6,5 +6,4 @@ pypdf
 pytest
 httpx
 python-multipart
-google-genai
 pypdfium2

@@ -21,6 +21,23 @@ def ollama_base_url(host: str | None = None) -> str:
     return raw
 
 
+def _is_local_ollama(host: str) -> bool:
+    lowered = host.lower()
+    return "127.0.0.1" in lowered or "://localhost" in lowered or lowered.endswith("/localhost")
+
+
+def gemma_configured(host: str | None = None, timeout: float = 1.5) -> bool:
+    """True when a Gemma server can be called.
+
+    Vercel instances do not run Ollama. Probing localhost there only adds a
+    timeout to every health check and investigation.
+    """
+    resolved = ollama_base_url(host)
+    if os.environ.get("VERCEL") and _is_local_ollama(resolved):
+        return False
+    return ollama_reachable(resolved, timeout=timeout)
+
+
 def ollama_reachable(host: str | None = None, timeout: float = 1.5) -> bool:
     url = ollama_base_url(host) + "/api/tags"
     try:
@@ -44,7 +61,7 @@ class GemmaClient:
 
     @property
     def available(self) -> bool:
-        return ollama_reachable(self.host)
+        return gemma_configured(self.host)
 
     def _generate(
         self,
