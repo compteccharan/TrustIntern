@@ -1,0 +1,275 @@
+"""FastAPI application for TrustIntern."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from app.agents.bus import RUN_COMPLETE, bus
+from app.agents.orchestrator import get_run, start_run
+from app.analyze import Lookups, analyze_opportunity
+from app.document import MAX_PDF_BYTES
+from app.samples import get_samples
+from app.storage import get_report, init_db, list_reports, save_report
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="TrustIntern API", version="1.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _validation_error(message: str, fields: dict[str, Any]) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "validation_error",
+            "message": message,
+            "fields": fields,
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    fields: dict[str, Any] = {}
+    for err in exc.errors():
+        loc = err.get("loc") or ()
+        # Skip "body" / "query" prefix — use last path segment as field name
+        key_parts = [str(p) for p in loc if p not in ("body", "query", "path")]
+        key = key_parts[-1] if key_parts else "request"
+        fields[key] = err.get("msg") or "Invalid value"
+    return _validation_error("Request validation failed", fields)
+
+
+def _parse_live_lookups(value: str | bool | None) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_bool(value: str | bool | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _parse_investigation_form(
+    company_name: str,
+    message: str,
+    recruiter_name: str | None,
+    recruiter_email: str | None,
+    website_url: str | None,
+    live_lookups: str,
+    pdf: UploadFile | None,
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    fields: dict[str, Any] = {}
+
+    company_name = (company_name or "").strip()
+    if not company_name or len(company_name) > 200:
+        fields["company_name"] = "Required, 1–200 characters"
+
+    if message is None or not str(message).strip() or len(message) > 20000:
+        fields["message"] = "Required, 1–20000 characters"
+
+    if recruiter_name is not None and len(recruiter_name) > 200:
+        fields["recruiter_name"] = "Max 200 characters"
+
+    if recruiter_email is not None and recruiter_email != "" and "@" not in recruiter_email:
+        fields["recruiter_email"] = "Must contain @"
+
+    pdf_bytes: bytes | None = None
+    if pdf is not None and (pdf.filename or "").strip():
+        raw = await pdf.read()
+        filename = (pdf.filename or "").lower()
+        content_type = (pdf.content_type or "").lower()
+        is_pdf = filename.endswith(".pdf") or "pdf" in content_type
+        if len(raw) > MAX_PDF_BYTES:
+            fields["pdf"] = "PDF must be at most 5 MB"
+        elif not is_pdf:
+            fields["pdf"] = "PDF only"
+        else:
+            pdf_bytes = raw
+
+    if fields:
+        return None, _validation_error("Request validation failed", fields)
+
+    data = {
+        "company_name": company_name,
+        "recruiter_name": (recruiter_name or None) or None,
+        "recruiter_email": (recruiter_email or None) or None,
+        "website_url": (website_url or None) or None,
+        "message": message,
+        "live_lookups": _parse_live_lookups(live_lookups),
+        "pdf": pdf_bytes,
+    }
+    return data, None
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/samples")
+def samples() -> list[dict[str, Any]]:
+    return get_samples()
+
+
+@app.post("/api/investigations")
+async def create_investigation(
+    company_name: str = Form(...),
+    message: str = Form(...),
+    recruiter_name: str | None = Form(None),
+    recruiter_email: str | None = Form(None),
+    website_url: str | None = Form(None),
+    live_lookups: str = Form("true"),
+    pdf: UploadFile | None = File(None),
+) -> Any:
+    data, err = await _parse_investigation_form(
+        company_name,
+        message,
+        recruiter_name,
+        recruiter_email,
+        website_url,
+        live_lookups,
+        pdf,
+    )
+    if err is not None:
+        return err
+    assert data is not None
+    report = analyze_opportunity(data, Lookups())
+    return save_report(report)
+
+
+@app.post("/api/investigations/runs")
+async def create_investigation_run(
+    company_name: str = Form(...),
+    message: str = Form(...),
+    recruiter_name: str | None = Form(None),
+    recruiter_email: str | None = Form(None),
+    website_url: str | None = Form(None),
+    live_lookups: str = Form("true"),
+    force_heuristic: str = Form("false"),
+    pdf: UploadFile | None = File(None),
+) -> Any:
+    """Start async multi-agent OSINT run; subscribe via GET .../events."""
+    data, err = await _parse_investigation_form(
+        company_name,
+        message,
+        recruiter_name,
+        recruiter_email,
+        website_url,
+        live_lookups,
+        pdf,
+    )
+    if err is not None:
+        return err
+    assert data is not None
+    run_id = await start_run(
+        data,
+        force_heuristic=_parse_bool(force_heuristic, default=False),
+    )
+    return {"run_id": run_id, "status": "running"}
+
+
+@app.get("/api/investigations/runs/{run_id}/events")
+async def investigation_run_events(run_id: str) -> StreamingResponse:
+    """SSE stream of AgentEvent JSON objects; ends after run_done."""
+    meta = get_run(run_id)
+    queue = await bus.subscribe(run_id)
+    if queue is None and meta is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_generator():
+        # Wait briefly for the run queue if POST just started
+        q = queue
+        for _ in range(50):
+            if q is not None:
+                break
+            await asyncio.sleep(0.02)
+            q = await bus.subscribe(run_id)
+
+        # Replay history for late subscribers
+        for past in bus.history(run_id):
+            yield f"data: {past.model_dump_json()}\n\n"
+            if past.type == "run_done":
+                return
+
+        if q is None:
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "error",
+                        "run_id": run_id,
+                        "ts": "",
+                        "payload": {"reason": "run_not_found"},
+                    }
+                )
+                + "\n\n"
+            )
+            return
+
+        while True:
+            item = await q.get()
+            if item is RUN_COMPLETE:
+                break
+            yield f"data: {item.model_dump_json()}\n\n"
+            if getattr(item, "type", None) == "run_done":
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/investigations/runs/{run_id}")
+def get_investigation_run(run_id: str) -> dict[str, Any]:
+    meta = get_run(run_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {"run_id": run_id, **meta}
+
+
+@app.get("/api/investigations")
+def list_investigations() -> list[dict[str, Any]]:
+    return list_reports()
+
+
+@app.get("/api/investigations/{investigation_id}")
+def get_investigation(investigation_id: int) -> dict[str, Any]:
+    report = get_report(investigation_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+    return report
