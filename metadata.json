@@ -1,0 +1,22 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M51SN7XNF9VKPK4EATC3RW57",
+  "strategy": "manual-commit",
+  "branch": "cursor/entire-devrelay-env-cb85",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/agents/__init__.py",
+    "backend/app/agents/bus.py",
+    "backend/app/agents/registry.py",
+    "backend/app/agents/schema.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
