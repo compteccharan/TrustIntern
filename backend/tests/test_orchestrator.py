@@ -245,3 +245,67 @@ def test_sync_investigations_still_works():
         )
         assert resp.status_code == 200
         assert resp.json()["score"] == 90
+
+
+def _suspicious_form(sample: dict[str, Any]) -> dict[str, str]:
+    return {
+        "company_name": sample["company_name"],
+        "recruiter_name": sample["recruiter_name"],
+        "recruiter_email": sample["recruiter_email"],
+        "website_url": sample["website_url"],
+        "message": sample["message"],
+        "live_lookups": "false",
+    }
+
+
+def test_sync_investigations_rejects_image_upload():
+    with TestClient(app) as client:
+        sample = get_sample("suspicious")
+        assert sample is not None
+        resp = client.post(
+            "/api/investigations",
+            data=_suspicious_form(sample),
+            files={"image": ("offer.png", b"\x89PNG\r\n", "image/png")},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"] == "validation_error"
+        assert "/api/investigations/runs" in body["message"]
+        assert "/api/investigations/runs" in body["fields"]["image"]
+
+
+def test_runs_accepts_image_upload_score_stays_90():
+    with TestClient(app) as client:
+        sample = get_sample("suspicious")
+        assert sample is not None
+        form = _suspicious_form(sample)
+        form["force_heuristic"] = "true"
+        resp = client.post(
+            "/api/investigations/runs",
+            data=form,
+            files={"image": ("offer.png", b"\x89PNG\r\n", "image/png")},
+        )
+        assert resp.status_code == 200
+        run_id = resp.json()["run_id"]
+        with client.stream("GET", f"/api/investigations/runs/{run_id}/events") as stream:
+            assert stream.status_code == 200
+            score = None
+            saw_document = False
+            for line in stream.iter_lines():
+                if not line:
+                    continue
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
+                if not line.startswith("data: "):
+                    continue
+                payload = json.loads(line[6:])
+                if payload.get("type") == "agent_spawn" and payload.get("payload", {}).get(
+                    "agent_type"
+                ) == "document_multimodal":
+                    saw_document = True
+                if payload.get("type") == "score_ready":
+                    score = payload["payload"]["score"]
+                if payload.get("type") == "run_done":
+                    break
+        assert saw_document
+        assert score == 90

@@ -34,7 +34,7 @@ Interactive docs: `/docs`
 | `message` | yes | 1–20000 characters |
 | `live_lookups` | no | bool, default `true` (samples send `false`) |
 | `pdf` | no | PDF only, max 5 MB |
-| `image` | no | PNG, JPEG, WebP, or GIF, max 5 MB. Sent to Gemma vision on `POST /runs` |
+| `image` | no | Not accepted. Uploading an image returns 422; send PNG, JPEG, WebP, or GIF (max 5 MB) to `POST /api/investigations/runs` |
 
 Validation errors return HTTP 422:
 
@@ -46,7 +46,7 @@ Lookup failures (fetch, PDF parse, RDAP) never fail the HTTP request; they becom
 
 ## POST `/api/investigations/runs`
 
-Same multipart fields as sync `POST /api/investigations`, plus:
+Same multipart fields as sync `POST /api/investigations`, except `image` is accepted here (PNG, JPEG, WebP, or GIF, max 5 MB) and sent to Gemma vision, plus:
 
 | Field | Required | Rules |
 | --- | --- | --- |

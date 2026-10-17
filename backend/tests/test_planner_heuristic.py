@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
+from app.agents.gemma_client import GemmaClient
 from app.agents.planner import heuristic_spawns, plan_next_agents
 from app.agents.registry import is_allowed
 from app.agents.schema import ALLOWED_AGENT_TYPES
@@ -49,6 +51,61 @@ def test_heuristic_spawns_image_document_mm():
     data = _suspicious_data()
     data["image"] = {"bytes": b"png", "mime": "image/png"}
     specs = heuristic_spawns(data, already=set(), depth=1)
+    assert any(s.agent_type == "document_multimodal" for s in specs)
+
+
+class _ImageOnlyPlanner(GemmaClient):
+    """Captures the planner prompt without calling Ollama."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prompt = ""
+
+    @property
+    def available(self) -> bool:  # type: ignore[override]
+        return True
+
+    def _generate(
+        self,
+        prompt: str,
+        *,
+        images: list[str] | None = None,
+        timeout_s: float = 180.0,
+    ) -> str:
+        del images, timeout_s
+        self.prompt = prompt
+        return json.dumps(
+            [
+                {
+                    "agent_type": "document_multimodal",
+                    "reason": "Offer image uploaded",
+                    "inputs": {},
+                }
+            ]
+        )
+
+
+def test_image_only_upload_reaches_gemma_planner():
+    data = _suspicious_data()
+    data["pdf"] = None
+    data["image"] = {"bytes": b"\x89PNG\r\n", "mime": "image/png"}
+    gemma = _ImageOnlyPlanner()
+    mode, specs, rejected = asyncio.run(
+        plan_next_agents(
+            data=data,
+            findings=[],
+            already_spawned=set(),
+            parent_id=None,
+            depth=1,
+            gemma=gemma,
+            force_heuristic=False,
+        )
+    )
+    assert mode == "gemma"
+    assert rejected == []
+    assert '"had_image": true' in gemma.prompt
+    assert '"had_pdf": false' in gemma.prompt
+    assert "If had_pdf or had_image is true, include document_multimodal" in gemma.prompt
     assert any(s.agent_type == "document_multimodal" for s in specs)
 
 
