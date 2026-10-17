@@ -30,6 +30,9 @@ IMAGE_MIMES = {
     "image/webp": "image/webp",
     "image/gif": "image/gif",
 }
+_IMAGE_SYNC_UNSUPPORTED = (
+    "Image uploads are only supported on POST /api/investigations/runs"
+)
 from app.samples import get_samples
 from app.storage import get_report, init_db, list_reports, save_report
 
@@ -145,6 +148,8 @@ async def _parse_investigation_form(
     live_lookups: str,
     pdf: UploadFile | None,
     image: UploadFile | None = None,
+    *,
+    allow_image: bool = True,
 ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     fields: dict[str, Any] = {}
 
@@ -178,17 +183,25 @@ async def _parse_investigation_form(
     image_limit = _upload_limit(MAX_IMAGE_BYTES)
     image_payload: dict[str, Any] | None = None
     if image is not None and (image.filename or "").strip():
-        raw_img = await image.read()
-        mime = _image_mime(image)
-        if len(raw_img) > image_limit:
-            fields["image"] = f"Image must be at most {image_limit // (1024 * 1024)} MB"
-        elif not mime:
-            fields["image"] = "PNG, JPEG, WebP, or GIF only"
+        if not allow_image:
+            fields["image"] = _IMAGE_SYNC_UNSUPPORTED
         else:
-            image_payload = {"bytes": raw_img, "mime": mime}
+            raw_img = await image.read()
+            mime = _image_mime(image)
+            if len(raw_img) > image_limit:
+                fields["image"] = f"Image must be at most {image_limit // (1024 * 1024)} MB"
+            elif not mime:
+                fields["image"] = "PNG, JPEG, WebP, or GIF only"
+            else:
+                image_payload = {"bytes": raw_img, "mime": mime}
 
     if fields:
-        return None, _validation_error("Request validation failed", fields)
+        message = (
+            _IMAGE_SYNC_UNSUPPORTED
+            if fields.get("image") == _IMAGE_SYNC_UNSUPPORTED
+            else "Request validation failed"
+        )
+        return None, _validation_error(message, fields)
 
     data = {
         "company_name": company_name,
@@ -239,6 +252,7 @@ async def create_investigation(
         live_lookups,
         pdf,
         image,
+        allow_image=False,
     )
     if err is not None:
         return err

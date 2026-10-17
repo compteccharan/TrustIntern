@@ -126,6 +126,8 @@ class GemmaClient:
             f"Already spawned types: {already_spawned}\n"
             "Propose 0-3 useful next agents. Prefer company_osint, recruiter_osint, "
             "document_multimodal, web_complaint_search, entity_followup, domain_osint.\n"
+            "If had_pdf or had_image is true, include document_multimodal so the uploaded "
+            "offer PDF or image is read.\n"
             "Do not invent agent_type values outside the allowlist."
         )
 

@@ -139,6 +139,7 @@ async def plan_next_agents(
         "website_url": data.get("website_url"),
         "message_preview": (data.get("message") or "")[:180],
         "had_pdf": bool(data.get("pdf")),
+        "had_image": bool(data.get("image")),
         "live_lookups": bool(data.get("live_lookups", True)),
     }
 
