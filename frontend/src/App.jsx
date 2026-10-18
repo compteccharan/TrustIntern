@@ -9,6 +9,7 @@ import {
   ApiError,
 } from './api';
 import { downloadReportPdf } from './reportPdf';
+import { Analytics } from '@vercel/analytics/react';
 
 const STATIC_DISCLAIMER = 'Heuristic indicator score, not a probability of fraud.';
 
@@ -685,6 +686,7 @@ export default function App() {
           )}
         </section>
       </div>
+      <Analytics />
     </div>
   );
 }
