@@ -128,7 +128,7 @@ function head({ description, path, jsonLd }) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${esc(TITLE)}</title>
+${path === '/' ? '    <meta name="google-site-verification" content="hyYnsGp1geOQcFtJvb2O4qtMfsL0EeY9_0JrQfH6YsM" />\n' : ''}    <title>${esc(TITLE)}</title>
     <meta name="description" content="${escAttr(description)}" />
     <link rel="canonical" href="${canonical}" />
     <meta property="og:title" content="${escAttr(TITLE)}" />
