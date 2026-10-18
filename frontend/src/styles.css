@@ -105,6 +105,24 @@ button {
   color: var(--ink);
 }
 
+.desk-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+.desk-links a {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .disclaimer-banner {
   margin: 0;
   justify-self: end;
