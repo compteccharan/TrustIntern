@@ -36,7 +36,7 @@ export default function App() {
   // Current active report
   const [report, setReport] = useState(null);
 
-  // Fictional sample banner
+  // Fictional composite banner
   const [isSampleLoaded, setIsSampleLoaded] = useState(false);
 
   // Samples cache from GET /api/samples
@@ -290,6 +290,10 @@ export default function App() {
         <div className="masthead-brand">
           <p className="desk-kicker">Investigation desk</p>
           <h1 className="app-title">TrustIntern</h1>
+          <nav className="desk-links" aria-label="Pages">
+            <a href="/about">About</a>
+            <a href="/faq">FAQ</a>
+          </nav>
         </div>
         <p className="disclaimer-banner">{activeDisclaimer}</p>
         {gemmaStatus && (
@@ -301,7 +305,7 @@ export default function App() {
         )}
 
         <div className="samples-row">
-          <span className="sample-label">Fictional samples:</span>
+          <span className="sample-label">Fictional composites:</span>
           <button
             type="button"
             className="btn-sample"
@@ -330,7 +334,7 @@ export default function App() {
 
         {isSampleLoaded && (
           <p className="sample-active-note">
-            Fictional sample. Live website and domain-age lookups are off so the score stays stable.
+            Fictional composite. Live website and domain-age lookups are off so the score stays stable.
           </p>
         )}
       </header>

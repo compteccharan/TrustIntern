@@ -1,0 +1,219 @@
+/* Crawlable pages. Scoped so the investigation desk keeps its own stylesheet. */
+
+.seo-static,
+.seo-page {
+  --sheet: #fbf8f2;
+  --ink: #1c1612;
+  --ink-soft: #3e372f;
+  --rule: #1c1612;
+  --rule-faint: #d4cbbd;
+  --oxblood: #7a241c;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Segoe UI Mono", Consolas, "Courier New", monospace;
+}
+
+body:has(> main.seo-static) {
+  margin: 0;
+  background-color: #d7cdb8;
+  color: #1c1612;
+}
+
+.seo-page {
+  margin: 0;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 28px 28px 72px;
+  background-color: #d7cdb8;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.seo-page *,
+.seo-static * {
+  box-sizing: border-box;
+}
+
+.seo-static {
+  padding: 0 28px 72px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.seo-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 32px 36px;
+  background: var(--sheet);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.seo-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 22px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.seo-nav a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.seo-nav a[aria-current='page'] {
+  color: var(--oxblood);
+}
+
+.seo-kicker {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.seo-wrap h1 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+.seo-lead {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  line-height: 1.4;
+}
+
+.seo-wrap p {
+  margin: 0 0 12px;
+}
+
+.seo-wrap h2 {
+  margin: 28px 0 10px;
+  font-family: var(--serif);
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.seo-callout {
+  margin: 18px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--ink);
+}
+
+.seo-callout p {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.seo-steps {
+  margin: 0 0 12px;
+  padding-left: 1.25rem;
+}
+
+.seo-steps li {
+  margin: 0 0 10px;
+}
+
+.seo-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.faq-item {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule-faint);
+}
+
+.faq-item h2,
+.faq-item h3 {
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.faq-item p {
+  margin: 0;
+}
+
+.seo-wrap a {
+  color: var(--oxblood);
+}
+
+.seo-wrap table {
+  width: 100%;
+  margin: 8px 0 16px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.seo-wrap caption {
+  margin-bottom: 8px;
+  caption-side: bottom;
+  text-align: left;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.seo-wrap th,
+.seo-wrap td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--rule-faint);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.seo-wrap th:last-child,
+.seo-wrap td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.seo-footer {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+@media (max-width: 560px) {
+  .seo-page,
+  .seo-static {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .seo-page {
+    padding-top: 16px;
+  }
+
+  .seo-wrap {
+    padding: 20px 16px 28px;
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrustIntern – Free Internship Offer Scam Checker for Students</title>
+    <meta name="description" content="How TrustIntern scores an internship offer for students in India. Heuristic indicator score, not a probability of fraud. Built for DEV Hacktoberfest Week 2 in 5.5 hours, open source under MIT. A teammate built the front end." />
+    <link rel="canonical" href="https://trustintern.charancodes.com/about" />
+    <meta property="og:title" content="TrustIntern – Free Internship Offer Scam Checker for Students" />
+    <meta property="og:description" content="How TrustIntern scores an internship offer for students in India. Heuristic indicator score, not a probability of fraud. Built for DEV Hacktoberfest Week 2 in 5.5 hours, open source under MIT. A teammate built the front end." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://trustintern.charancodes.com/about" />
+    <meta property="og:site_name" content="TrustIntern" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="TrustIntern – Free Internship Offer Scam Checker for Students" />
+    <meta name="twitter:description" content="How TrustIntern scores an internship offer for students in India. Heuristic indicator score, not a probability of fraud. Built for DEV Hacktoberfest Week 2 in 5.5 hours, open source under MIT. A teammate built the front end." />
+    <link rel="stylesheet" href="/seo.css" />
+  </head>
+  <body class="seo-page">
+    <main class="seo-wrap">
+      <nav class="seo-nav" aria-label="Pages">
+        <a href="/">Checker</a>
+        <a href="/about" aria-current="page">About</a>
+        <a href="/faq">FAQ</a>
+      </nav>
+      <p class="seo-kicker">About and methodology</p>
+      <h1>How TrustIntern scores an offer</h1>
+      <p class="seo-lead">For students in India checking an internship offer. Placement-season messages, UPI fees, WhatsApp recruiters, and Aadhaar or OTP requests come first. Job offers can be checked with the same rules.</p>
+      <blockquote class="seo-callout"><p>Heuristic indicator score, not a probability of fraud.</p></blockquote>
+      <h2>Who it is for</h2>
+      <p>The live site is a free beta for students. Paid tiers for colleges and placement cells are planned. It is not a promise that every check is free for everyone.</p>
+      <h2>How it was built</h2>
+      <p>TrustIntern was built for DEV's Hacktoberfest Open-Source AI Challenge Week 2 in 5.5 hours and is open source under the MIT license. A teammate built the front end. The write-up is <a href="https://dev.to/noahosmont/trustintern-i-built-a-scam-detective-for-internship-offers-in-55-hours-and-my-agents-kept-1446">on DEV</a>. The code is <a href="https://github.com/compteccharan/TrustIntern">on GitHub</a> under the <a href="https://github.com/compteccharan/TrustIntern/blob/main/LICENSE">MIT license</a>.</p>
+      <h2>How it works</h2>
+      <ol class="seo-steps">
+        <li>Fixed checkers look at the email domain, domain age (RDAP), website and message text.</li>
+        <li>Gemma 4 plans which research agents to launch: company, recruiter, complaints, domain, document, follow-up. Only allowlisted agent types run; at most 8 agents and depth 2.</li>
+        <li>Gemma 4 vision reads the offer letter (PDF or screenshot) and flags inconsistencies.</li>
+        <li>Deterministic scoring (backend/app/scoring.py) adds up fixed indicator points: upfront fee 25, domain mismatch 20, sensitive data 20, young domain 15, offer conflict 15, unrelated domain 10, urgency 10, personal email 5. The total is capped at 100 and never reduced. Gemma never assigns points.</li>
+        <li>Progress streams to the React desk over SSE; Gemma then writes a plain-language summary of the evidence.</li>
+      </ol>
+      <p>On the hosted site, Gemma falls back to the Gemini API. A local install can run Gemma through Ollama, and if no model is reachable a heuristic planner finishes the investigation. The score never depends on the model. Gemma plans, reads, and summarizes, but never scores.</p>
+      <h2>Recompute the score</h2>
+      <p>The score runs from 0 to 100. Every point is tied to a piece of evidence. Anyone can recompute it by hand from <a href="https://github.com/compteccharan/TrustIntern/blob/main/backend/CONTRACT.md">backend/CONTRACT.md</a>. Only those fixed weights create points. Gemma never assigns points, and the score does not call any company a scammer.</p>
+      <table>
+          <caption>Fixed indicator points. The total is capped at 100 and never reduced.</caption>
+          <thead>
+            <tr><th scope="col">Indicator</th><th scope="col">Points</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Upfront fee</td><td>25</td></tr>
+            <tr><td>Email domain mismatch</td><td>20</td></tr>
+            <tr><td>Sensitive data request</td><td>20</td></tr>
+            <tr><td>Newly registered domain</td><td>15</td></tr>
+            <tr><td>Offer letter conflict</td><td>15</td></tr>
+            <tr><td>Company not in domain</td><td>10</td></tr>
+            <tr><td>Urgency or guarantee</td><td>10</td></tr>
+            <tr><td>Personal email provider</td><td>5</td></tr>
+          </tbody>
+        </table>
+      <h2>Fictional composites</h2>
+      <p>The built-in examples are fictional composites, not real companies or real recruiters. With live lookups off, the suspicious composite scores 90. That locked number is the arithmetic, which the tests check.</p>
+      <p class="seo-footer"><a href="/">Open the checker</a> · <a href="/faq">FAQ</a></p>
+    </main>
+  </body>
+</html>
