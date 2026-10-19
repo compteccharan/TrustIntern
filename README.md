@@ -44,7 +44,7 @@ Environment variables: `OLLAMA_HOST` (default `http://127.0.0.1:11434`), `GEMMA_
   - All sessions: https://dev.to/noahosmont
 
 ## Hacktoberfest 2026
-Built for the DEV Hacktoberfest Open-Source AI Challenge, Week 2: Side Hustle. All code commits are from 16 Oct 2026; this README and LICENSE were added on 17 Oct 2026. Any commits after the deadline (18 Oct, 11:59 PM PDT) will be listed here.
+Built for the DEV Hacktoberfest Open-Source AI Challenge, Week 2: Side Hustle. The core app was built on 16 Oct 2026. Before the deadline (18 Oct, 11:59 PM PDT) I added the README, LICENSE and the had_image fix (PR #6) on 17 Oct, then crawlable SEO pages, a Search Console tag and Vercel Web Analytics (PRs #7 to #9) on 18 Oct. Any commits after the deadline will be listed here.
 
 ## License
 MIT. See [LICENSE](LICENSE).
