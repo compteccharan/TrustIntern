@@ -301,7 +301,7 @@ export default function App() {
           <p className="gemma-status">
             {gemmaStatus.gemma_configured
               ? `Open-weight ${gemmaStatus.model} is running locally in Ollama. Screenshots and PDF pages go to Gemma vision; scoring stays in scoring.py.`
-              : `Local Gemma is not reachable. Start Ollama and run: ollama pull ${gemmaStatus.model || 'gemma4:e2b'}. Until then, vision stays on phrase rules.`}
+              : 'Hosted demo: deterministic checks plus heuristic planner. Gemma 4 planning and vision run when you self-host with Ollama (see README).'}
           </p>
         )}
 
